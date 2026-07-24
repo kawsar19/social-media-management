@@ -6,12 +6,45 @@ import { useEffect, useState } from "react";
 const STORAGE_KEY = "linkedin_access_token";
 
 export default function PostPage() {
-  const [connected, setConnected] = useState(false);
+  const [token, setToken] = useState(null);
   const [text, setText] = useState("");
+  const [publishing, setPublishing] = useState(false);
+  const [result, setResult] = useState(null); // { ok: boolean, message: string }
+
+  const connected = Boolean(token);
 
   useEffect(() => {
-    setConnected(Boolean(localStorage.getItem(STORAGE_KEY)));
+    setToken(localStorage.getItem(STORAGE_KEY));
   }, []);
+
+  async function publish() {
+    setPublishing(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/auth/linkedin/share", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResult({ ok: false, message: data.error || "Failed to publish" });
+      } else {
+        setResult({
+          ok: true,
+          message: data.id ? `Published! (${data.id})` : "Published!",
+        });
+        setText("");
+      }
+    } catch {
+      setResult({ ok: false, message: "Network error while publishing" });
+    } finally {
+      setPublishing(false);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-10">
@@ -60,12 +93,25 @@ export default function PostPage() {
         <div className="mt-4 flex items-center justify-between">
           <span className="text-sm text-slate-400">{text.length} characters</span>
           <button
-            disabled={!connected || text.trim().length === 0}
+            onClick={publish}
+            disabled={!connected || text.trim().length === 0 || publishing}
             className="rounded-lg bg-black px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-40"
           >
-            Publish
+            {publishing ? "Publishing…" : "Publish"}
           </button>
         </div>
+
+        {result && (
+          <div
+            className={
+              result.ok
+                ? "mt-4 break-all rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700"
+                : "mt-4 break-all rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            }
+          >
+            {result.message}
+          </div>
+        )}
       </div>
 
       <p className="mt-6 text-sm text-slate-500">
