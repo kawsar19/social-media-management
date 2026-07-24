@@ -6,6 +6,7 @@ const LINKEDIN_CLIENT_ID = "869sxzia2ogeui";
 const REDIRECT_URI = "http://localhost:3001/api/auth/linkedin/callback";
 const SCOPE = "openid profile email w_member_social";
 const STORAGE_KEY = "linkedin_access_token";
+const FB_STORAGE_KEY = "facebook_user_access_token";
 
 function buildLinkedInAuthUrl() {
   const params = new URLSearchParams({
@@ -18,11 +19,40 @@ function buildLinkedInAuthUrl() {
   return `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`;
 }
 
+// Facebook OAuth ("Login with Facebook"). The App ID and redirect URI are
+// public values (same as LinkedIn's client_id above), so they live in the
+// client. The App Secret stays server-side in .env.local and is only used by
+// the callback route to exchange the code for a token.
+const FB_APP_ID = "1363634801765963";
+const FB_REDIRECT_URI = "http://localhost:3001/api/auth/facebook/callback";
+const FB_SCOPE =
+  "public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,business_management";
+const FB_GRAPH_VERSION = "v25.0";
+
+function buildFacebookAuthUrl() {
+  const params = new URLSearchParams({
+    client_id: FB_APP_ID,
+    redirect_uri: FB_REDIRECT_URI,
+    scope: FB_SCOPE,
+    response_type: "code",
+    state: "poc",
+  });
+  return `https://www.facebook.com/${FB_GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
+}
+
 export default function ConnectPage() {
   const [token, setToken] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+
+  // Facebook: connected via the "Login with Facebook" OAuth redirect. The
+  // callback route returns the user access token in the URL hash, same as
+  // LinkedIn. We then list the Pages this user can manage.
+  const [fbToken, setFbToken] = useState(null);
+  const [fbPages, setFbPages] = useState([]);
+  const [fbLoading, setFbLoading] = useState(false);
+  const [fbError, setFbError] = useState(null);
 
   // On mount: read the access token from the URL hash (set by the callback
   // route), save it to localStorage, then clean the URL. Also restore any
@@ -37,6 +67,17 @@ export default function ConnectPage() {
 
     if (window.location.hash) {
       const hash = new URLSearchParams(window.location.hash.slice(1));
+
+      // Facebook callback returns its token under fb_access_token so it can be
+      // told apart from LinkedIn's access_token.
+      const fbAccessToken = hash.get("fb_access_token");
+      if (fbAccessToken) {
+        localStorage.setItem(FB_STORAGE_KEY, fbAccessToken);
+        setFbToken(fbAccessToken);
+        window.history.replaceState(null, "", "/connect");
+        return;
+      }
+
       const accessToken = hash.get("access_token");
       if (accessToken) {
         localStorage.setItem(STORAGE_KEY, accessToken);
@@ -84,6 +125,59 @@ export default function ConnectPage() {
     };
   }, [token]);
 
+  // On mount: restore a previously saved Facebook token.
+  useEffect(() => {
+    setFbToken(localStorage.getItem(FB_STORAGE_KEY));
+  }, []);
+
+  // Whenever we have a Facebook token, fetch the Pages it can manage
+  // via our /api/auth/facebook/pages proxy (which calls /me/accounts).
+  useEffect(() => {
+    if (!fbToken) {
+      setFbPages([]);
+      return;
+    }
+
+    let cancelled = false;
+    setFbLoading(true);
+    setFbError(null);
+
+    fetch("/api/auth/facebook/pages", {
+      headers: { Authorization: `Bearer ${fbToken}` },
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          setFbError(data.error || "Failed to load Facebook Pages");
+          setFbPages([]);
+        } else {
+          setFbPages(data.pages || []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFbError("Failed to load Facebook Pages");
+      })
+      .finally(() => {
+        if (!cancelled) setFbLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fbToken]);
+
+  function connectFacebook() {
+    window.location.href = buildFacebookAuthUrl();
+  }
+
+  function disconnectFacebook() {
+    localStorage.removeItem(FB_STORAGE_KEY);
+    setFbToken(null);
+    setFbPages([]);
+    setFbError(null);
+  }
+
   function connectLinkedIn() {
     window.location.href = buildLinkedInAuthUrl();
   }
@@ -104,7 +198,18 @@ export default function ConnectPage() {
       onConnect: connectLinkedIn,
       onDisconnect: disconnectLinkedIn,
     },
-    { name: "Facebook", icon: "📘", connected: false },
+    {
+      name: "Facebook",
+      icon: "📘",
+      isFacebook: true,
+      connected: Boolean(fbToken),
+      account:
+        fbPages.length > 0
+          ? fbPages.map((p) => p.name).join(", ")
+          : "Facebook Account",
+      onConnect: connectFacebook,
+      onDisconnect: disconnectFacebook,
+    },
     { name: "Instagram", icon: "📷", connected: false },
     { name: "X", icon: "✖️", connected: false },
     { name: "TikTok", icon: "🎵", connected: false },
@@ -126,7 +231,7 @@ export default function ConnectPage() {
 
         {errorMsg && (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            LinkedIn connection failed: {errorMsg}
+            Connection failed: {errorMsg}
           </div>
         )}
 
@@ -210,6 +315,58 @@ export default function ConnectPage() {
                       </div>
                     </div>
                   ) : null}
+                </div>
+              )}
+
+              {platform.isFacebook && platform.connected && (
+                <div className="mt-5 border-t pt-5">
+                  {fbLoading && fbPages.length === 0 ? (
+                    <p className="text-sm text-slate-400">
+                      Loading Facebook Pages…
+                    </p>
+                  ) : fbError ? (
+                    <p className="text-sm text-red-600">{fbError}</p>
+                  ) : fbPages.length > 0 ? (
+                    <div className="space-y-3">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                        Pages you manage
+                      </p>
+                      {fbPages.map((page) => (
+                        <div key={page.id} className="flex items-center gap-4">
+                          {page.picture ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={page.picture}
+                              alt={page.name}
+                              className="h-12 w-12 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-lg font-semibold text-slate-600">
+                              {page.name?.[0] ?? "?"}
+                            </div>
+                          )}
+
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-slate-900">
+                              {page.name}
+                            </p>
+                            {page.category && (
+                              <p className="truncate text-sm text-slate-500">
+                                {page.category}
+                              </p>
+                            )}
+                            <p className="truncate text-xs text-slate-400">
+                              ID: {page.id}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-400">
+                      No Pages found for this account.
+                    </p>
+                  )}
                 </div>
               )}
             </div>

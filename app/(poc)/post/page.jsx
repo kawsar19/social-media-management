@@ -3,21 +3,59 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-const STORAGE_KEY = "linkedin_access_token";
+const LINKEDIN_KEY = "linkedin_access_token";
+const FB_KEY = "facebook_user_access_token";
 
 export default function PostPage() {
-  const [token, setToken] = useState(null);
+  const [platform, setPlatform] = useState("linkedin"); // "linkedin" | "facebook"
+
+  const [liToken, setLiToken] = useState(null);
+  const [fbToken, setFbToken] = useState(null);
+
   const [text, setText] = useState("");
   const [image, setImage] = useState(null); // File
   const [preview, setPreview] = useState(null); // object URL
-  const [publishing, setPublishing] = useState(false);
-  const [result, setResult] = useState(null); // { ok: boolean, message: string }
 
-  const connected = Boolean(token);
+  // Facebook Pages + which ones are selected to post to.
+  const [fbPages, setFbPages] = useState([]);
+  const [fbPagesLoading, setFbPagesLoading] = useState(false);
+  const [selectedPageIds, setSelectedPageIds] = useState([]);
+
+  const [publishing, setPublishing] = useState(false);
+  const [result, setResult] = useState(null); // { ok, message } | { multi: [...] }
+
+  const liConnected = Boolean(liToken);
+  const fbConnected = Boolean(fbToken);
+  const connected = platform === "linkedin" ? liConnected : fbConnected;
 
   useEffect(() => {
-    setToken(localStorage.getItem(STORAGE_KEY));
+    setLiToken(localStorage.getItem(LINKEDIN_KEY));
+    setFbToken(localStorage.getItem(FB_KEY));
   }, []);
+
+  // When Facebook is selected and connected, load the Pages to choose from.
+  useEffect(() => {
+    if (platform !== "facebook" || !fbToken) return;
+
+    let cancelled = false;
+    setFbPagesLoading(true);
+    fetch("/api/auth/facebook/pages", {
+      headers: { Authorization: `Bearer ${fbToken}` },
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (cancelled) return;
+        if (res.ok) setFbPages(data.pages || []);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setFbPagesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [platform, fbToken]);
 
   function onPickImage(e) {
     const file = e.target.files?.[0] ?? null;
@@ -30,29 +68,69 @@ export default function PostPage() {
     setPreview(null);
   }
 
+  function togglePage(id) {
+    setSelectedPageIds((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
+    );
+  }
+
+  async function publishLinkedIn() {
+    const formData = new FormData();
+    formData.append("text", text);
+    if (image) formData.append("image", image);
+
+    const res = await fetch("/api/auth/linkedin/share", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${liToken}` },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setResult({ ok: false, message: data.error || "Failed to publish" });
+    } else {
+      setResult({
+        ok: true,
+        message: data.id ? `Published to LinkedIn! (${data.id})` : "Published!",
+      });
+      setText("");
+      clearImage();
+    }
+  }
+
+  async function publishFacebook() {
+    const formData = new FormData();
+    formData.append("text", text);
+    if (image) formData.append("image", image);
+    formData.append("pageIds", JSON.stringify(selectedPageIds));
+
+    const res = await fetch("/api/auth/facebook/share", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${fbToken}` },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setResult({ ok: false, message: data.error || "Failed to publish" });
+      return;
+    }
+
+    const allOk = data.results.every((r) => r.ok);
+    setResult({ multi: data.results });
+    if (allOk) {
+      setText("");
+      clearImage();
+      setSelectedPageIds([]);
+    }
+  }
+
   async function publish() {
     setPublishing(true);
     setResult(null);
     try {
-      const formData = new FormData();
-      formData.append("text", text);
-      if (image) formData.append("image", image);
-
-      const res = await fetch("/api/auth/linkedin/share", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setResult({ ok: false, message: data.error || "Failed to publish" });
+      if (platform === "linkedin") {
+        await publishLinkedIn();
       } else {
-        setResult({
-          ok: true,
-          message: data.id ? `Published! (${data.id})` : "Published!",
-        });
-        setText("");
-        clearImage();
+        await publishFacebook();
       }
     } catch {
       setResult({ ok: false, message: "Network error while publishing" });
@@ -60,6 +138,11 @@ export default function PostPage() {
       setPublishing(false);
     }
   }
+
+  const fbNoPageSelected =
+    platform === "facebook" && selectedPageIds.length === 0;
+  const canPublish =
+    connected && text.trim().length > 0 && !publishing && !fbNoPageSelected;
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-10">
@@ -70,10 +153,35 @@ export default function PostPage() {
         </p>
       </div>
 
+      {/* Platform selector */}
+      <div className="mb-6 inline-flex rounded-xl border bg-white p-1 shadow-sm">
+        <button
+          onClick={() => setPlatform("linkedin")}
+          className={
+            platform === "linkedin"
+              ? "rounded-lg bg-black px-5 py-2 text-sm font-medium text-white"
+              : "rounded-lg px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          }
+        >
+          💼 LinkedIn
+        </button>
+        <button
+          onClick={() => setPlatform("facebook")}
+          className={
+            platform === "facebook"
+              ? "rounded-lg bg-black px-5 py-2 text-sm font-medium text-white"
+              : "rounded-lg px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          }
+        >
+          📘 Facebook
+        </button>
+      </div>
+
       {!connected && (
         <div className="mb-6 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4">
           <p className="text-sm text-amber-800">
-            No LinkedIn account connected yet.
+            No {platform === "linkedin" ? "LinkedIn" : "Facebook"} account
+            connected yet.
           </p>
           <Link
             href="/connect"
@@ -87,15 +195,60 @@ export default function PostPage() {
       <div className="rounded-2xl border bg-white p-6 shadow-sm">
         <div className="mb-4 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-xl">
-            💼
+            {platform === "linkedin" ? "💼" : "📘"}
           </div>
           <div>
-            <p className="font-medium text-slate-900">LinkedIn</p>
-            <p className={connected ? "text-sm text-green-600" : "text-sm text-slate-400"}>
+            <p className="font-medium text-slate-900">
+              {platform === "linkedin" ? "LinkedIn" : "Facebook"}
+            </p>
+            <p
+              className={
+                connected ? "text-sm text-green-600" : "text-sm text-slate-400"
+              }
+            >
               {connected ? "Connected" : "Not connected"}
             </p>
           </div>
         </div>
+
+        {/* Facebook: pick which Pages to post to */}
+        {platform === "facebook" && fbConnected && (
+          <div className="mb-4 rounded-xl border border-slate-200 p-4">
+            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-400">
+              Post to which Pages?
+            </p>
+            {fbPagesLoading && fbPages.length === 0 ? (
+              <p className="text-sm text-slate-400">Loading Pages…</p>
+            ) : fbPages.length === 0 ? (
+              <p className="text-sm text-slate-400">No Pages found.</p>
+            ) : (
+              <div className="grid max-h-56 gap-2 overflow-y-auto sm:grid-cols-2">
+                {fbPages.map((page) => (
+                  <label
+                    key={page.id}
+                    className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 p-2 hover:bg-slate-50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedPageIds.includes(page.id)}
+                      onChange={() => togglePage(page.id)}
+                      className="h-4 w-4"
+                    />
+                    <span className="truncate text-sm text-slate-700">
+                      {page.name}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {selectedPageIds.length > 0 && (
+              <p className="mt-3 text-xs text-slate-500">
+                {selectedPageIds.length} Page
+                {selectedPageIds.length > 1 ? "s" : ""} selected
+              </p>
+            )}
+          </div>
+        )}
 
         <textarea
           value={text}
@@ -135,17 +288,26 @@ export default function PostPage() {
         </div>
 
         <div className="mt-4 flex items-center justify-between">
-          <span className="text-sm text-slate-400">{text.length} characters</span>
+          <span className="text-sm text-slate-400">
+            {text.length} characters
+          </span>
           <button
             onClick={publish}
-            disabled={!connected || text.trim().length === 0 || publishing}
+            disabled={!canPublish}
             className="rounded-lg bg-black px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-40"
           >
             {publishing ? "Publishing…" : "Publish"}
           </button>
         </div>
 
-        {result && (
+        {fbNoPageSelected && fbConnected && (
+          <p className="mt-3 text-sm text-amber-600">
+            Select at least one Page to publish.
+          </p>
+        )}
+
+        {/* Single-result (LinkedIn or error) */}
+        {result && !result.multi && (
           <div
             className={
               result.ok
@@ -154,6 +316,25 @@ export default function PostPage() {
             }
           >
             {result.message}
+          </div>
+        )}
+
+        {/* Per-Page results (Facebook) */}
+        {result?.multi && (
+          <div className="mt-4 space-y-2">
+            {result.multi.map((r) => (
+              <div
+                key={r.pageId}
+                className={
+                  r.ok
+                    ? "break-all rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700"
+                    : "break-all rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                }
+              >
+                <span className="font-medium">{r.pageName}:</span>{" "}
+                {r.ok ? `Published! (${r.id})` : r.error}
+              </div>
+            ))}
           </div>
         )}
       </div>
