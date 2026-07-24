@@ -8,6 +8,8 @@ const STORAGE_KEY = "linkedin_access_token";
 export default function PostPage() {
   const [token, setToken] = useState(null);
   const [text, setText] = useState("");
+  const [image, setImage] = useState(null); // File
+  const [preview, setPreview] = useState(null); // object URL
   const [publishing, setPublishing] = useState(false);
   const [result, setResult] = useState(null); // { ok: boolean, message: string }
 
@@ -17,17 +19,29 @@ export default function PostPage() {
     setToken(localStorage.getItem(STORAGE_KEY));
   }, []);
 
+  function onPickImage(e) {
+    const file = e.target.files?.[0] ?? null;
+    setImage(file);
+    setPreview(file ? URL.createObjectURL(file) : null);
+  }
+
+  function clearImage() {
+    setImage(null);
+    setPreview(null);
+  }
+
   async function publish() {
     setPublishing(true);
     setResult(null);
     try {
+      const formData = new FormData();
+      formData.append("text", text);
+      if (image) formData.append("image", image);
+
       const res = await fetch("/api/auth/linkedin/share", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ text }),
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
       });
       const data = await res.json();
       if (!res.ok) {
@@ -38,6 +52,7 @@ export default function PostPage() {
           message: data.id ? `Published! (${data.id})` : "Published!",
         });
         setText("");
+        clearImage();
       }
     } catch {
       setResult({ ok: false, message: "Network error while publishing" });
@@ -89,6 +104,35 @@ export default function PostPage() {
           placeholder="What do you want to share?"
           className="w-full resize-none rounded-xl border border-slate-200 p-4 text-slate-900 outline-none focus:border-slate-400"
         />
+
+        <div className="mt-4">
+          {preview ? (
+            <div className="relative inline-block">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={preview}
+                alt="Selected"
+                className="max-h-56 rounded-xl border object-cover"
+              />
+              <button
+                onClick={clearImage}
+                className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-xs text-white hover:bg-black"
+              >
+                Remove
+              </button>
+            </div>
+          ) : (
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+              🖼️ Add image
+              <input
+                type="file"
+                accept="image/*"
+                onChange={onPickImage}
+                className="hidden"
+              />
+            </label>
+          )}
+        </div>
 
         <div className="mt-4 flex items-center justify-between">
           <span className="text-sm text-slate-400">{text.length} characters</span>
