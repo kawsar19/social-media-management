@@ -41,6 +41,33 @@ function buildFacebookAuthUrl() {
   return `https://www.facebook.com/${FB_GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
 }
 
+// YouTube = Google OAuth. The Client ID is public (exposed via NEXT_PUBLIC_*);
+// the Client Secret stays server-side and is only used by the callback route.
+const YT_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+const YT_REDIRECT_URI = "http://localhost:3001/api/auth/youtube/callback";
+const YT_STORAGE_KEY = "youtube_access_token";
+// Scopes: readonly (channel/videos) + force-ssl (comment reply) +
+// yt-analytics.readonly (analytics). Add youtube.upload later for uploads.
+const YT_SCOPE = [
+  "https://www.googleapis.com/auth/youtube.readonly",
+  "https://www.googleapis.com/auth/youtube.force-ssl",
+  "https://www.googleapis.com/auth/yt-analytics.readonly",
+].join(" ");
+
+function buildYouTubeAuthUrl() {
+  const params = new URLSearchParams({
+    client_id: YT_CLIENT_ID,
+    redirect_uri: YT_REDIRECT_URI,
+    response_type: "code",
+    scope: YT_SCOPE,
+    // access_type=offline + prompt=consent would return a refresh_token; we
+    // don't persist one in this POC, so the token just lasts ~1 hour.
+    include_granted_scopes: "true",
+    state: "poc",
+  });
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+}
+
 export default function ConnectPage() {
   const [token, setToken] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -57,6 +84,14 @@ export default function ConnectPage() {
 
   // Which Pages the user has chosen to show across the app. Empty = show all.
   const [enabledPageIds, setEnabledPageIdsState] = useState([]);
+
+  // YouTube: connected via Google OAuth. The callback returns the access token
+  // in the URL hash (yt_access_token), same pattern as Facebook. We then load
+  // the user's channel to confirm the connection.
+  const [ytToken, setYtToken] = useState(null);
+  const [ytChannel, setYtChannel] = useState(null);
+  const [ytLoading, setYtLoading] = useState(false);
+  const [ytError, setYtError] = useState(null);
 
   // On mount: read the access token from the URL hash (set by the callback
   // route), save it to localStorage, then clean the URL. Also restore any
@@ -78,6 +113,15 @@ export default function ConnectPage() {
       if (fbAccessToken) {
         localStorage.setItem(FB_STORAGE_KEY, fbAccessToken);
         setFbToken(fbAccessToken);
+        window.history.replaceState(null, "", "/connect");
+        return;
+      }
+
+      // YouTube callback returns its token under yt_access_token.
+      const ytAccessToken = hash.get("yt_access_token");
+      if (ytAccessToken) {
+        localStorage.setItem(YT_STORAGE_KEY, ytAccessToken);
+        setYtToken(ytAccessToken);
         window.history.replaceState(null, "", "/connect");
         return;
       }
@@ -135,6 +179,49 @@ export default function ConnectPage() {
     setEnabledPageIdsState(getEnabledPageIds());
   }, []);
 
+  // On mount: restore a previously saved YouTube token.
+  useEffect(() => {
+    setYtToken(localStorage.getItem(YT_STORAGE_KEY));
+  }, []);
+
+  // Whenever we have a YouTube token, load the channel to confirm the
+  // connection via our /api/auth/youtube/channel proxy.
+  useEffect(() => {
+    if (!ytToken) {
+      setYtChannel(null);
+      return;
+    }
+
+    let cancelled = false;
+    setYtLoading(true);
+    setYtError(null);
+
+    fetch("/api/auth/youtube/channel", {
+      headers: { Authorization: `Bearer ${ytToken}` },
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          // Most likely an expired token (Google tokens last ~1 hour).
+          setYtError(data.error || "Failed to load YouTube channel");
+          setYtChannel(null);
+        } else {
+          setYtChannel(data.channel || null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setYtError("Failed to load YouTube channel");
+      })
+      .finally(() => {
+        if (!cancelled) setYtLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ytToken]);
+
   // Whenever we have a Facebook token, fetch the Pages it can manage
   // via our /api/auth/facebook/pages proxy (which calls /me/accounts).
   useEffect(() => {
@@ -183,6 +270,23 @@ export default function ConnectPage() {
     setFbError(null);
   }
 
+  function connectYouTube() {
+    if (!YT_CLIENT_ID) {
+      setYtError(
+        "Missing NEXT_PUBLIC_GOOGLE_CLIENT_ID — add your Google Client ID to .env.local"
+      );
+      return;
+    }
+    window.location.href = buildYouTubeAuthUrl();
+  }
+
+  function disconnectYouTube() {
+    localStorage.removeItem(YT_STORAGE_KEY);
+    setYtToken(null);
+    setYtChannel(null);
+    setYtError(null);
+  }
+
   // Toggle whether a Page is shown across the app, and persist the choice.
   function togglePageEnabled(pageId) {
     const next = enabledPageIds.includes(pageId)
@@ -223,6 +327,15 @@ export default function ConnectPage() {
           : "Facebook Account",
       onConnect: connectFacebook,
       onDisconnect: disconnectFacebook,
+    },
+    {
+      name: "YouTube",
+      icon: "▶️",
+      isYouTube: true,
+      connected: Boolean(ytToken),
+      account: ytChannel?.title || "YouTube Channel",
+      onConnect: connectYouTube,
+      onDisconnect: disconnectYouTube,
     },
     { name: "Instagram", icon: "📷", connected: false },
     { name: "X", icon: "✖️", connected: false },
@@ -392,6 +505,57 @@ export default function ConnectPage() {
                       No Pages found for this account.
                     </p>
                   )}
+                </div>
+              )}
+
+              {platform.isYouTube && platform.connected && (
+                <div className="mt-5 border-t pt-5">
+                  {ytLoading && !ytChannel ? (
+                    <p className="text-sm text-slate-400">
+                      Loading YouTube channel…
+                    </p>
+                  ) : ytError ? (
+                    <p className="text-sm text-red-600">
+                      {ytError} — try reconnecting (Google tokens expire after
+                      about an hour).
+                    </p>
+                  ) : ytChannel ? (
+                    <div className="flex items-center gap-4">
+                      {ytChannel.thumbnail ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={ytChannel.thumbnail}
+                          alt={ytChannel.title}
+                          className="h-12 w-12 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-lg font-semibold text-slate-600">
+                          {ytChannel.title?.[0] ?? "?"}
+                        </div>
+                      )}
+
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-slate-900">
+                          {ytChannel.title}
+                        </p>
+                        <p className="truncate text-sm text-slate-500">
+                          {ytChannel.subscribers != null
+                            ? `${Number(
+                                ytChannel.subscribers
+                              ).toLocaleString()} subscribers`
+                            : ""}
+                          {ytChannel.videoCount != null
+                            ? ` · ${Number(
+                                ytChannel.videoCount
+                              ).toLocaleString()} videos`
+                            : ""}
+                        </p>
+                        <p className="truncate text-xs text-slate-400">
+                          ID: {ytChannel.id}
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>
