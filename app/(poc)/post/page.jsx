@@ -310,7 +310,7 @@ export default function PostPage() {
 
       {!connected && (
         <div className="mb-6 flex items-center justify-between rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-amber-200">
-          <p className="pretty text-sm">
+          <p className="pretty text-sm text-yellow-900">
             No {platformLabel} account connected yet.
           </p>
           <Link href="/connect" className="btn btn-primary">

@@ -1,15 +1,123 @@
 @import "tailwindcss";
 
 /* ============================================================
-   Design tokens — a dark, glassy dashboard system.
+   Theme tokens. Everything (shell, glass, buttons, fields, text)
+   reads from these variables so a single data-theme flip on <html>
+   restyles the whole app. Dark is the default; light overrides below.
    ============================================================ */
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+:root,
+:root[data-theme="dark"] {
+  --background: #070a12;
+  --foreground: #e7e9ee;
+
+  /* App shell background layers (aurora glow + base). */
+  --shell-base: #070a12;
+  --glow-1: rgba(79, 111, 255, 0.16);
+  --glow-2: rgba(255, 59, 48, 0.12);
+  --glow-3: rgba(10, 102, 194, 0.12);
+
+  /* Text roles. */
+  --text-strong: #ffffff;
+  --text-body: #cdd2dc;
+  --text-muted: #8b93a3;
+
+  /* Glass surfaces. */
+  --glass-bg: rgba(255, 255, 255, 0.045);
+  --glass-bg-hover: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-border-hover: rgba(255, 255, 255, 0.16);
+  --glass-inset: rgba(255, 255, 255, 0.06);
+  --glass-shadow: rgba(0, 0, 0, 0.6);
+  --glass-shadow-hover: rgba(0, 0, 0, 0.7);
+
+  /* Frosted bar. */
+  --bar-bg: rgba(9, 12, 20, 0.6);
+  --bar-border: rgba(255, 255, 255, 0.08);
+
+  /* Hairlines / subtle fills used by page utilities. */
+  --line: rgba(255, 255, 255, 0.1);
+  --line-strong: rgba(255, 255, 255, 0.15);
+  --fill-subtle: rgba(255, 255, 255, 0.05);
+  --fill-track: rgba(255, 255, 255, 0.1);
+
+  /* Buttons. */
+  --btn-primary-from: #ffffff;
+  --btn-primary-to: #e9edf6;
+  --btn-primary-text: #0b0f1a;
+  --btn-primary-shadow: rgba(255, 255, 255, 0.5);
+  --btn-ghost-bg: rgba(255, 255, 255, 0.05);
+  --btn-ghost-bg-hover: rgba(255, 255, 255, 0.09);
+  --btn-ghost-text: #cdd2dc;
+  --btn-ghost-border: rgba(255, 255, 255, 0.1);
+
+  /* Inputs. */
+  --field-bg: rgba(255, 255, 255, 0.04);
+  --field-bg-focus: rgba(255, 255, 255, 0.06);
+  --field-border: rgba(255, 255, 255, 0.1);
+  --field-text: #eef1f6;
+  --field-placeholder: rgba(231, 233, 238, 0.4);
+
+  /* Image outline. */
+  --img-outline: rgba(255, 255, 255, 0.1);
+
+  /* Skeleton shimmer. */
+  --skeleton-base: rgba(255, 255, 255, 0.04);
+  --skeleton-shine: rgba(255, 255, 255, 0.12);
+
+  --scroll-thumb: rgba(255, 255, 255, 0.14);
 }
 
-/* This POC ships a single, deliberate dark theme (the app shell paints its own
-   background), so we don't branch on prefers-color-scheme for the app chrome. */
+:root[data-theme="light"] {
+  --background: #f4f6fb;
+  --foreground: #1b2130;
+
+  --shell-base: #f4f6fb;
+  --glow-1: rgba(79, 111, 255, 0.1);
+  --glow-2: rgba(255, 59, 48, 0.07);
+  --glow-3: rgba(10, 102, 194, 0.08);
+
+  --text-strong: #0f1524;
+  --text-body: #3b4457;
+  --text-muted: #6b7385;
+
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-bg-hover: rgba(255, 255, 255, 0.9);
+  --glass-border: rgba(15, 21, 36, 0.08);
+  --glass-border-hover: rgba(15, 21, 36, 0.16);
+  --glass-inset: rgba(255, 255, 255, 0.9);
+  --glass-shadow: rgba(31, 41, 68, 0.14);
+  --glass-shadow-hover: rgba(31, 41, 68, 0.2);
+
+  --bar-bg: rgba(255, 255, 255, 0.7);
+  --bar-border: rgba(15, 21, 36, 0.08);
+
+  --line: rgba(15, 21, 36, 0.1);
+  --line-strong: rgba(15, 21, 36, 0.16);
+  --fill-subtle: rgba(15, 21, 36, 0.04);
+  --fill-track: rgba(15, 21, 36, 0.08);
+
+  --btn-primary-from: #1b2130;
+  --btn-primary-to: #10151f;
+  --btn-primary-text: #ffffff;
+  --btn-primary-shadow: rgba(27, 33, 48, 0.28);
+  --btn-ghost-bg: rgba(15, 21, 36, 0.04);
+  --btn-ghost-bg-hover: rgba(15, 21, 36, 0.08);
+  --btn-ghost-text: #3b4457;
+  --btn-ghost-border: rgba(15, 21, 36, 0.12);
+
+  --field-bg: rgba(255, 255, 255, 0.8);
+  --field-bg-focus: #ffffff;
+  --field-border: rgba(15, 21, 36, 0.14);
+  --field-text: #1b2130;
+  --field-placeholder: rgba(27, 33, 48, 0.4);
+
+  --img-outline: rgba(15, 21, 36, 0.12);
+
+  --skeleton-base: rgba(15, 21, 36, 0.05);
+  --skeleton-shine: rgba(15, 21, 36, 0.1);
+
+  --scroll-thumb: rgba(15, 21, 36, 0.18);
+}
 
 @theme inline {
   --color-background: var(--background);
@@ -29,32 +137,31 @@ html {
 }
 
 body {
-  color: #e7e9ee;
+  color: var(--foreground);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  transition: color 200ms ease, background-color 200ms ease;
 }
 
-/* Updating numbers (counters, stats, prices) shouldn't jitter. */
 .tabular {
   font-variant-numeric: tabular-nums;
 }
 
-/* Images get a subtle neutral inset outline so edges don't blur into cards. */
 .app-img {
-  outline: 1px solid rgba(255, 255, 255, 0.1);
+  outline: 1px solid var(--img-outline);
   outline-offset: -1px;
 }
 
 /* ============================================================
-   App shell background — deep slate with layered aurora glow.
+   App shell background.
    ============================================================ */
 .app-shell {
   position: relative;
   min-height: 100vh;
   background:
-    radial-gradient(60rem 40rem at 15% -10%, rgba(79, 111, 255, 0.16), transparent 60%),
-    radial-gradient(55rem 40rem at 100% 0%, rgba(255, 59, 48, 0.12), transparent 55%),
-    radial-gradient(50rem 40rem at 50% 120%, rgba(10, 102, 194, 0.12), transparent 55%),
-    #070a12;
+    radial-gradient(60rem 40rem at 15% -10%, var(--glow-1), transparent 60%),
+    radial-gradient(55rem 40rem at 100% 0%, var(--glow-2), transparent 55%),
+    radial-gradient(50rem 40rem at 50% 120%, var(--glow-3), transparent 55%),
+    var(--shell-base);
   background-attachment: fixed;
 }
 
@@ -62,13 +169,13 @@ body {
    Glass surfaces.
    ============================================================ */
 .glass {
-  background: rgba(255, 255, 255, 0.045);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   box-shadow:
-    0 1px 0 0 rgba(255, 255, 255, 0.06) inset,
-    0 12px 40px -12px rgba(0, 0, 0, 0.6);
+    0 1px 0 0 var(--glass-inset) inset,
+    0 12px 40px -12px var(--glass-shadow);
 }
 
 .glass-hover {
@@ -78,29 +185,34 @@ body {
 }
 .glass-hover:hover {
   transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--glass-border-hover);
+  background: var(--glass-bg-hover);
   box-shadow:
-    0 1px 0 0 rgba(255, 255, 255, 0.08) inset,
-    0 22px 50px -16px rgba(0, 0, 0, 0.7);
+    0 1px 0 0 var(--glass-inset) inset,
+    0 22px 50px -16px var(--glass-shadow-hover);
 }
 
-/* Frosted top bar. */
 .glass-bar {
-  background: rgba(9, 12, 20, 0.6);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--bar-bg);
+  border-bottom: 1px solid var(--bar-border);
   backdrop-filter: blur(16px) saturate(140%);
   -webkit-backdrop-filter: blur(16px) saturate(140%);
 }
 
 /* ============================================================
-   Buttons — tactile, interruptible transitions.
+   Buttons.
    ============================================================ */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  /* Sensible defaults so a bare `.btn` (with no Tailwind padding utilities)
+     still has a usable size and hit area. Padding utilities on the element
+     take precedence over this. */
+  padding: 0.55rem 1rem;
+  min-height: 2.5rem;
+  white-space: nowrap;
   border-radius: 0.75rem;
   font-weight: 600;
   font-size: 0.875rem;
@@ -119,41 +231,40 @@ body {
 }
 
 .btn-primary {
-  background: linear-gradient(180deg, #ffffff, #e9edf6);
-  color: #0b0f1a;
-  box-shadow: 0 8px 24px -10px rgba(255, 255, 255, 0.5);
+  background: linear-gradient(180deg, var(--btn-primary-from), var(--btn-primary-to));
+  color: var(--btn-primary-text);
+  box-shadow: 0 8px 24px -10px var(--btn-primary-shadow);
 }
 .btn-primary:hover:not(:disabled) {
-  box-shadow: 0 12px 30px -10px rgba(255, 255, 255, 0.65);
+  box-shadow: 0 12px 30px -10px var(--btn-primary-shadow);
 }
 
 .btn-ghost {
-  background: rgba(255, 255, 255, 0.05);
-  color: #cdd2dc;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--btn-ghost-bg);
+  color: var(--btn-ghost-text);
+  border: 1px solid var(--btn-ghost-border);
 }
 .btn-ghost:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.09);
-  color: #fff;
+  background: var(--btn-ghost-bg-hover);
+  color: var(--text-strong);
 }
 
 .btn-danger {
   background: rgba(255, 59, 48, 0.12);
-  color: #ff7a72;
+  color: #e5484d;
   border: 1px solid rgba(255, 59, 48, 0.28);
 }
 .btn-danger:hover:not(:disabled) {
   background: rgba(255, 59, 48, 0.2);
-  color: #ff9a94;
 }
 
 /* Inputs. */
 .field {
   width: 100%;
   border-radius: 0.75rem;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #eef1f6;
+  background: var(--field-bg);
+  border: 1px solid var(--field-border);
+  color: var(--field-text);
   padding: 0.75rem 0.9rem;
   font-size: 0.9rem;
   transition-property: border-color, box-shadow, background-color;
@@ -162,16 +273,59 @@ body {
   outline: none;
 }
 .field::placeholder {
-  color: rgba(231, 233, 238, 0.4);
+  color: var(--field-placeholder);
 }
 .field:focus {
   border-color: rgba(120, 150, 255, 0.55);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--field-bg-focus);
   box-shadow: 0 0 0 3px rgba(79, 111, 255, 0.18);
 }
 
 /* ============================================================
-   Motion — split enter (rich) / exit (quiet).
+   Text-role remap for light theme.
+   Pages were authored with dark-first Tailwind text classes
+   (text-white / text-slate-300/400/500 and white/black alpha fills).
+   Rather than editing every page, remap those exact utilities to the
+   theme's semantic tokens when data-theme="light".
+   ============================================================ */
+:root[data-theme="light"] .text-white {
+  color: var(--text-strong) !important;
+}
+:root[data-theme="light"] .text-slate-200,
+:root[data-theme="light"] .text-slate-300 {
+  color: var(--text-body) !important;
+}
+:root[data-theme="light"] .text-slate-400,
+:root[data-theme="light"] .text-slate-500 {
+  color: var(--text-muted) !important;
+}
+
+/* Subtle white-alpha fills/borders used across cards -> dark-alpha in light. */
+:root[data-theme="light"] .bg-white\/5,
+:root[data-theme="light"] .bg-white\/\[0\.04\] {
+  background-color: var(--fill-subtle) !important;
+}
+:root[data-theme="light"] .bg-white\/10 {
+  background-color: var(--fill-track) !important;
+}
+:root[data-theme="light"] .border-white\/5,
+:root[data-theme="light"] .border-white\/10 {
+  border-color: var(--line) !important;
+}
+:root[data-theme="light"] .border-white\/15 {
+  border-color: var(--line-strong) !important;
+}
+:root[data-theme="light"] .ring-white\/10 {
+  --tw-ring-color: var(--line) !important;
+}
+
+/* Gradient clip-text headings read as near-black in light. */
+:root[data-theme="light"] .from-white {
+  --tw-gradient-from: var(--text-strong) var(--tw-gradient-from-position) !important;
+}
+
+/* ============================================================
+   Motion.
    ============================================================ */
 @keyframes rise-in {
   from {
@@ -189,7 +343,6 @@ body {
   animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* Stagger helper: set --i on children of a list. */
 .stagger > * {
   animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: calc(var(--i, 0) * 55ms);
@@ -206,9 +359,9 @@ body {
 .skeleton {
   background: linear-gradient(
     100deg,
-    rgba(255, 255, 255, 0.04) 30%,
-    rgba(255, 255, 255, 0.12) 50%,
-    rgba(255, 255, 255, 0.04) 70%
+    var(--skeleton-base) 30%,
+    var(--skeleton-shine) 50%,
+    var(--skeleton-base) 70%
   );
   background-size: 200% 100%;
   animation: sheen 1.4s linear infinite;
@@ -226,7 +379,6 @@ body {
   }
 }
 
-/* Balanced/pretty wrapping for headings and short copy. */
 .balance {
   text-wrap: balance;
 }
@@ -234,13 +386,12 @@ body {
   text-wrap: pretty;
 }
 
-/* Custom scrollbar for scoped scroll areas. */
 .scroll-slim::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 .scroll-slim::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--scroll-thumb);
   border-radius: 999px;
 }
 .scroll-slim::-webkit-scrollbar-track {

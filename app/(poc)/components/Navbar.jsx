@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import ThemeToggle from "./ThemeToggle";
 
 const links = [
   { href: "/post", label: "Post", icon: "✍️" },
@@ -27,7 +28,8 @@ export default function Navbar() {
           </span>
         </Link>
 
-        <div className="scroll-slim flex items-center gap-1 overflow-x-auto">
+        <div className="flex items-center gap-2">
+          <div className="scroll-slim flex items-center gap-1 overflow-x-auto">
           {links.map((link) => {
             const active = pathname === link.href;
             return (
@@ -50,6 +52,8 @@ export default function Navbar() {
               </Link>
             );
           })}
+          </div>
+          <ThemeToggle />
         </div>
       </nav>
     </header>
