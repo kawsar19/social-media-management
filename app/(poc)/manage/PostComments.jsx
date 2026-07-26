@@ -127,31 +127,36 @@ export default function PostComments({ fbToken, pageId, postId }) {
   }
 
   return (
-    <div className="mt-3 border-t pt-3">
+    <div className="mt-3 border-t border-white/10 pt-3">
       <button
         onClick={toggle}
-        className="text-sm font-medium text-slate-600 hover:text-slate-900"
+        className="text-sm font-medium text-slate-400 transition-colors hover:text-white"
       >
         💬 {open ? "Hide comments" : "Comments"}
       </button>
 
       {open && (
-        <div className="mt-3 space-y-3">
-          {error && <p className="break-all text-sm text-red-600">{error}</p>}
+        <div className="mt-3 space-y-3 rounded-xl bg-white/5 p-4">
+          {error && (
+            <p className="break-all rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-200">
+              {error}
+            </p>
+          )}
 
           {loading ? (
-            <p className="text-sm text-slate-400">Loading comments…</p>
+            <p className="text-sm text-slate-500">Loading comments…</p>
           ) : comments.length === 0 ? (
-            <p className="text-sm text-slate-400">No comments yet.</p>
+            <p className="text-sm text-slate-500">No comments yet.</p>
           ) : (
             comments.map((c) => (
-              <div key={c.id} className="rounded-lg bg-slate-50 p-3">
+              <div
+                key={c.id}
+                className="rounded-lg border border-white/10 bg-white/[0.04] p-3"
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-900">
-                      {c.from}
-                    </p>
-                    <p className="break-words text-sm text-slate-700">
+                    <p className="text-sm font-medium text-white">{c.from}</p>
+                    <p className="break-words text-sm text-slate-300">
                       {c.message}
                     </p>
                   </div>
@@ -160,14 +165,14 @@ export default function PostComments({ fbToken, pageId, postId }) {
                       onClick={() =>
                         setReplyToId(replyToId === c.id ? null : c.id)
                       }
-                      className="text-xs font-medium text-slate-500 hover:text-slate-900"
+                      className="text-xs font-medium text-slate-400 transition-colors hover:text-white"
                     >
                       Reply
                     </button>
                     <button
                       onClick={() => deleteComment(c.id)}
                       disabled={deletingId === c.id}
-                      className="text-xs font-medium text-red-600 hover:underline disabled:opacity-40"
+                      className="text-xs font-medium text-rose-300 hover:text-rose-200 hover:underline disabled:opacity-40"
                     >
                       {deletingId === c.id ? "…" : "Delete"}
                     </button>
@@ -176,24 +181,24 @@ export default function PostComments({ fbToken, pageId, postId }) {
 
                 {/* Nested replies to this comment */}
                 {c.replies?.length > 0 && (
-                  <div className="mt-2 space-y-2 border-l-2 border-slate-200 pl-3">
+                  <div className="mt-2 space-y-2 border-l-2 border-white/15 pl-3">
                     {c.replies.map((r) => (
                       <div
                         key={r.id}
                         className="flex items-start justify-between gap-3"
                       >
                         <div className="min-w-0">
-                          <p className="text-xs font-medium text-slate-800">
+                          <p className="text-xs font-medium text-slate-200">
                             {r.from}
                           </p>
-                          <p className="break-words text-xs text-slate-600">
+                          <p className="break-words text-xs text-slate-400">
                             {r.message}
                           </p>
                         </div>
                         <button
                           onClick={() => deleteComment(r.id)}
                           disabled={deletingId === r.id}
-                          className="flex-shrink-0 text-xs font-medium text-red-600 hover:underline disabled:opacity-40"
+                          className="flex-shrink-0 text-xs font-medium text-rose-300 hover:text-rose-200 hover:underline disabled:opacity-40"
                         >
                           {deletingId === r.id ? "…" : "Delete"}
                         </button>
@@ -210,12 +215,12 @@ export default function PostComments({ fbToken, pageId, postId }) {
                       value={nestedReply}
                       onChange={(e) => setNestedReply(e.target.value)}
                       placeholder={`Reply to ${c.from}…`}
-                      className="flex-1 rounded-lg border border-slate-200 p-2 text-sm text-slate-900 outline-none focus:border-slate-400"
+                      className="field flex-1"
                     />
                     <button
                       onClick={() => sendNestedReply(c.id)}
                       disabled={nestedReplying || !nestedReply.trim()}
-                      className="rounded-lg bg-black px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-40"
+                      className="btn btn-primary"
                     >
                       {nestedReplying ? "…" : "Send"}
                     </button>
@@ -232,12 +237,12 @@ export default function PostComments({ fbToken, pageId, postId }) {
               value={reply}
               onChange={(e) => setReply(e.target.value)}
               placeholder="Write a reply…"
-              className="flex-1 rounded-lg border border-slate-200 p-2 text-sm text-slate-900 outline-none focus:border-slate-400"
+              className="field flex-1"
             />
             <button
               onClick={sendReply}
               disabled={replying || !reply.trim()}
-              className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-40"
+              className="btn btn-primary"
             >
               {replying ? "…" : "Reply"}
             </button>

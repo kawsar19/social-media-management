@@ -1,12 +1,11 @@
 import Navbar from "./components/Navbar";
 
-// Shared layout for all POC pages (/connect, /post). Renders the navbar
-// above the page content.
+// Shared shell for all POC pages: aurora dark background + sticky navbar.
 export default function PocLayout({ children }) {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="app-shell flex flex-1 flex-col">
       <Navbar />
-      {children}
+      <main className="flex-1">{children}</main>
     </div>
   );
 }

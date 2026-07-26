@@ -1,26 +1,248 @@
 @import "tailwindcss";
 
+/* ============================================================
+   Design tokens — a dark, glassy dashboard system.
+   ============================================================ */
 :root {
   --background: #ffffff;
   --foreground: #171717;
 }
+
+/* This POC ships a single, deliberate dark theme (the app shell paints its own
+   background), so we don't branch on prefers-color-scheme for the app chrome. */
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Per-platform accents, reused across cards / buttons / bars. */
+  --color-brand-linkedin: #0a66c2;
+  --color-brand-facebook: #4f6fff;
+  --color-brand-youtube: #ff3b30;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: #e7e9ee;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Updating numbers (counters, stats, prices) shouldn't jitter. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Images get a subtle neutral inset outline so edges don't blur into cards. */
+.app-img {
+  outline: 1px solid rgba(255, 255, 255, 0.1);
+  outline-offset: -1px;
+}
+
+/* ============================================================
+   App shell background — deep slate with layered aurora glow.
+   ============================================================ */
+.app-shell {
+  position: relative;
+  min-height: 100vh;
+  background:
+    radial-gradient(60rem 40rem at 15% -10%, rgba(79, 111, 255, 0.16), transparent 60%),
+    radial-gradient(55rem 40rem at 100% 0%, rgba(255, 59, 48, 0.12), transparent 55%),
+    radial-gradient(50rem 40rem at 50% 120%, rgba(10, 102, 194, 0.12), transparent 55%),
+    #070a12;
+  background-attachment: fixed;
+}
+
+/* ============================================================
+   Glass surfaces.
+   ============================================================ */
+.glass {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.06) inset,
+    0 12px 40px -12px rgba(0, 0, 0, 0.6);
+}
+
+.glass-hover {
+  transition-property: transform, border-color, box-shadow, background-color;
+  transition-duration: 200ms;
+  transition-timing-function: ease-out;
+}
+.glass-hover:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.08) inset,
+    0 22px 50px -16px rgba(0, 0, 0, 0.7);
+}
+
+/* Frosted top bar. */
+.glass-bar {
+  background: rgba(9, 12, 20, 0.6);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+}
+
+/* ============================================================
+   Buttons — tactile, interruptible transitions.
+   ============================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  line-height: 1;
+  transition-property: transform, background-color, box-shadow, border-color, opacity, color;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+  will-change: transform;
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: linear-gradient(180deg, #ffffff, #e9edf6);
+  color: #0b0f1a;
+  box-shadow: 0 8px 24px -10px rgba(255, 255, 255, 0.5);
+}
+.btn-primary:hover:not(:disabled) {
+  box-shadow: 0 12px 30px -10px rgba(255, 255, 255, 0.65);
+}
+
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.05);
+  color: #cdd2dc;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.09);
+  color: #fff;
+}
+
+.btn-danger {
+  background: rgba(255, 59, 48, 0.12);
+  color: #ff7a72;
+  border: 1px solid rgba(255, 59, 48, 0.28);
+}
+.btn-danger:hover:not(:disabled) {
+  background: rgba(255, 59, 48, 0.2);
+  color: #ff9a94;
+}
+
+/* Inputs. */
+.field {
+  width: 100%;
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #eef1f6;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.9rem;
+  transition-property: border-color, box-shadow, background-color;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+  outline: none;
+}
+.field::placeholder {
+  color: rgba(231, 233, 238, 0.4);
+}
+.field:focus {
+  border-color: rgba(120, 150, 255, 0.55);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 3px rgba(79, 111, 255, 0.18);
+}
+
+/* ============================================================
+   Motion — split enter (rich) / exit (quiet).
+   ============================================================ */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+.rise-in {
+  animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Stagger helper: set --i on children of a list. */
+.stagger > * {
+  animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+
+@keyframes sheen {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0.04) 30%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.04) 70%
+  );
+  background-size: 200% 100%;
+  animation: sheen 1.4s linear infinite;
+  border-radius: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise-in,
+  .stagger > *,
+  .skeleton {
+    animation: none;
+  }
+  .btn:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* Balanced/pretty wrapping for headings and short copy. */
+.balance {
+  text-wrap: balance;
+}
+.pretty {
+  text-wrap: pretty;
+}
+
+/* Custom scrollbar for scoped scroll areas. */
+.scroll-slim::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-slim::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+.scroll-slim::-webkit-scrollbar-track {
+  background: transparent;
 }

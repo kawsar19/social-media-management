@@ -58,138 +58,163 @@ export default function YouTubePage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-10">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900">YouTube Videos</h1>
-        <p className="mt-2 text-slate-500">
-          Your recent uploads with stats — expand any video to read and reply to
-          comments.
-        </p>
-      </div>
-
-      {!connected && (
-        <div className="mb-6 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <p className="text-sm text-amber-800">
-            No YouTube channel connected yet.
+    <div className="rise-in mx-auto max-w-5xl px-6 py-10">
+      <div>
+        <div className="mb-8">
+          <h1 className="balance text-4xl font-bold text-white">
+            <span className="bg-gradient-to-r from-rose-400 to-red-500 bg-clip-text text-transparent">
+              YouTube
+            </span>{" "}
+            Videos
+          </h1>
+          <p className="pretty mt-3 max-w-xl text-slate-400">
+            Your recent uploads with stats — expand any video to read and reply
+            to comments.
           </p>
-          <Link
-            href="/connect"
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-          >
-            Go to Connect
-          </Link>
         </div>
-      )}
 
-      {connected && channel && (
-        <div className="mb-6 flex items-center justify-between rounded-2xl border bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-4">
-            {channel.thumbnail ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={channel.thumbnail}
-                alt={channel.title}
-                className="h-12 w-12 rounded-full object-cover"
-              />
-            ) : (
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-lg font-semibold text-slate-600">
-                {channel.title?.[0] ?? "?"}
-              </div>
-            )}
-            <div className="min-w-0">
-              <p className="truncate font-medium text-slate-900">
-                {channel.title}
-              </p>
-              <p className="truncate text-sm text-slate-500">
-                {fmtNum(channel.subscribers)} subscribers ·{" "}
-                {fmtNum(channel.videoCount)} videos
-              </p>
-            </div>
+        {!connected && (
+          <div className="mb-6 flex items-center justify-between rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-amber-200">
+            <p className="text-sm">No YouTube channel connected yet.</p>
+            <Link href="/connect" className="btn btn-primary">
+              Go to Connect
+            </Link>
           </div>
-          <button
-            onClick={() => loadChannel(ytToken)}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-          >
-            ↻ Refresh
-          </button>
-        </div>
-      )}
+        )}
 
-      {error && (
-        <div className="mb-6 break-all rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error} — try reconnecting on the{" "}
-          <Link href="/connect" className="font-medium underline">
-            Connect
-          </Link>{" "}
-          page (Google tokens expire after about an hour).
-        </div>
-      )}
+        {connected && channel && (
+          <div className="glass relative mb-6 flex items-center justify-between overflow-hidden rounded-2xl p-6">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-rose-500/20 blur-3xl"
+            />
+            <div className="relative flex items-center gap-4">
+              {channel.thumbnail ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={channel.thumbnail}
+                  alt={channel.title}
+                  className="app-img h-14 w-14 rounded-full object-cover ring-2 ring-rose-400/40"
+                />
+              ) : (
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-rose-500/15 text-lg font-semibold text-rose-200 ring-2 ring-rose-400/40">
+                  {channel.title?.[0] ?? "?"}
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="truncate text-lg font-semibold text-white">
+                  {channel.title}
+                </p>
+                <p className="truncate text-sm text-slate-400">
+                  <span className="tabular text-slate-300">
+                    {fmtNum(channel.subscribers)}
+                  </span>{" "}
+                  subscribers ·{" "}
+                  <span className="tabular text-slate-300">
+                    {fmtNum(channel.videoCount)}
+                  </span>{" "}
+                  videos
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => loadChannel(ytToken)}
+              className="btn btn-ghost relative"
+            >
+              ↻ Refresh
+            </button>
+          </div>
+        )}
 
-      {loading && <p className="text-sm text-slate-400">Loading videos…</p>}
+        {error && (
+          <div className="mb-6 break-all rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-200">
+            {error} — try reconnecting on the{" "}
+            <Link href="/connect" className="font-medium underline">
+              Connect
+            </Link>{" "}
+            page (Google tokens expire after about an hour).
+          </div>
+        )}
 
-      {!loading && connected && !error && (
-        <div className="space-y-4">
-          {videos.length === 0 ? (
-            <p className="text-sm text-slate-400">No videos found.</p>
-          ) : (
-            videos.map((video) => (
-              <div
-                key={video.id}
-                className="rounded-2xl border bg-white p-5 shadow-sm"
-              >
-                <div className="flex gap-4">
-                  {video.thumbnail && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={video.thumbnail}
-                      alt=""
-                      className="h-20 w-32 flex-shrink-0 rounded-lg border object-cover"
-                    />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="break-words font-medium text-slate-900">
-                      {video.title || (
-                        <span className="italic text-slate-400">(untitled)</span>
-                      )}
-                    </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-400">
-                      <span>{fmtDate(video.publishedAt)}</span>
-                      <span>👁 {fmtNum(video.views)}</span>
-                      <span>👍 {fmtNum(video.likes)}</span>
-                      <span>💬 {fmtNum(video.comments)}</span>
-                      <a
-                        href={`https://www.youtube.com/watch?v=${video.id}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="underline hover:text-slate-600"
-                      >
-                        Watch on YouTube
-                      </a>
+        {loading && (
+          <p className="text-sm text-slate-500">Loading videos…</p>
+        )}
+
+        {!loading && connected && !error && (
+          <div className="stagger space-y-4">
+            {videos.length === 0 ? (
+              <p className="text-sm text-slate-500">No videos found.</p>
+            ) : (
+              videos.map((video) => (
+                <div key={video.id} className="glass glass-hover rounded-2xl p-5">
+                  <div className="flex gap-4">
+                    {video.thumbnail && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={video.thumbnail}
+                        alt=""
+                        className="app-img aspect-video h-auto w-40 flex-shrink-0 rounded-lg object-cover ring-1 ring-white/10"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="balance break-words text-base font-semibold text-white">
+                        {video.title || (
+                          <span className="italic text-slate-500">
+                            (untitled)
+                          </span>
+                        )}
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                        <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-400 ring-1 ring-white/10">
+                          {fmtDate(video.publishedAt)}
+                        </span>
+                        <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-400 ring-1 ring-white/10">
+                          👁 <span className="tabular">{fmtNum(video.views)}</span>
+                        </span>
+                        <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-400 ring-1 ring-white/10">
+                          👍 <span className="tabular">{fmtNum(video.likes)}</span>
+                        </span>
+                        <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-400 ring-1 ring-white/10">
+                          💬{" "}
+                          <span className="tabular">{fmtNum(video.comments)}</span>
+                        </span>
+                        <a
+                          href={`https://www.youtube.com/watch?v=${video.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium text-rose-400 hover:text-rose-300"
+                        >
+                          Watch on YouTube ↗
+                        </a>
+                      </div>
                     </div>
                   </div>
+
+                  <YouTubeComments ytToken={ytToken} videoId={video.id} />
                 </div>
+              ))
+            )}
+          </div>
+        )}
 
-                <YouTubeComments ytToken={ytToken} videoId={video.id} />
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      <p className="mt-8 text-sm text-slate-500">
-        See your{" "}
-        <Link
-          href="/youtube-insights"
-          className="font-medium text-slate-900 underline"
-        >
-          YouTube Analytics
-        </Link>{" "}
-        or go back to{" "}
-        <Link href="/connect" className="font-medium text-slate-900 underline">
-          Connect
-        </Link>
-        .
-      </p>
+        <p className="mt-8 text-sm text-slate-500">
+          See your{" "}
+          <Link
+            href="/youtube-insights"
+            className="font-medium text-rose-400 hover:text-rose-300"
+          >
+            YouTube Analytics
+          </Link>{" "}
+          or go back to{" "}
+          <Link
+            href="/connect"
+            className="font-medium text-rose-400 hover:text-rose-300"
+          >
+            Connect
+          </Link>
+          .
+        </p>
+      </div>
     </div>
   );
 }

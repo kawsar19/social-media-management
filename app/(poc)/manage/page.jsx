@@ -118,38 +118,31 @@ export default function ManagePage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-10">
+    <div className="rise-in mx-auto max-w-5xl px-6 py-10">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900">Manage Page Posts</h1>
-        <p className="mt-2 text-slate-500">
+        <h1 className="balance text-3xl font-bold text-white">
+          Manage Page Posts
+        </h1>
+        <p className="pretty mt-2 text-slate-400">
           View, filter, and delete recent posts from your Facebook Pages.
         </p>
       </div>
 
       {!connected && (
-        <div className="mb-6 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <p className="text-sm text-amber-800">
-            No Facebook account connected yet.
-          </p>
-          <Link
-            href="/connect"
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-          >
+        <div className="mb-6 flex items-center justify-between rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-amber-200">
+          <p className="text-sm">No Facebook account connected yet.</p>
+          <Link href="/connect" className="btn btn-primary">
             Go to Connect
           </Link>
         </div>
       )}
 
       {connected && (
-        <div className="mb-6 rounded-2xl border bg-white p-6 shadow-sm">
-          <label className="mb-2 block text-sm font-medium text-slate-700">
+        <div className="glass mb-6 rounded-2xl p-6">
+          <label className="mb-2 block text-sm font-medium text-slate-300">
             Choose a Page
           </label>
-          <select
-            value={selectedPageId}
-            onChange={onSelectPage}
-            className="w-full rounded-lg border border-slate-200 p-3 text-sm text-slate-900 outline-none focus:border-slate-400"
-          >
+          <select value={selectedPageId} onChange={onSelectPage} className="field w-full">
             <option value="">— Select a Page —</option>
             {pages.map((p) => (
               <option key={p.id} value={p.id}>
@@ -165,20 +158,20 @@ export default function ManagePage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Filter posts by text…"
-                className="flex-1 rounded-lg border border-slate-200 p-2.5 text-sm text-slate-900 outline-none focus:border-slate-400"
+                className="field flex-1"
               />
-              <label className="flex items-center gap-2 text-sm text-slate-600">
+              <label className="flex items-center gap-2 text-sm text-slate-400">
                 <input
                   type="checkbox"
                   checked={onlyWithPhoto}
                   onChange={(e) => setOnlyWithPhoto(e.target.checked)}
-                  className="h-4 w-4"
+                  className="h-4 w-4 accent-indigo-500"
                 />
                 Only with photo
               </label>
               <button
                 onClick={() => loadPosts(selectedPageId)}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                className="btn btn-ghost"
               >
                 ↻ Refresh
               </button>
@@ -188,30 +181,32 @@ export default function ManagePage() {
       )}
 
       {error && (
-        <div className="mb-6 break-all rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <div className="mb-6 break-all rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-200">
           {error}
         </div>
       )}
 
       {selectedPageId && (
-        <div className="space-y-4">
+        <div className="stagger space-y-4">
           {loadingPosts ? (
-            <p className="text-sm text-slate-400">Loading posts…</p>
+            <p className="text-sm text-slate-500">Loading posts…</p>
           ) : visiblePosts.length === 0 ? (
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-slate-500">
               {posts.length === 0
                 ? "No posts found for this Page."
                 : "No posts match your filter."}
             </p>
           ) : (
             <>
-              <p className="text-sm text-slate-500">
-                Showing {visiblePosts.length} of {posts.length} posts
+              <p className="text-sm text-slate-400">
+                Showing <span className="tabular">{visiblePosts.length}</span> of{" "}
+                <span className="tabular">{posts.length}</span> posts
               </p>
-              {visiblePosts.map((post) => (
+              {visiblePosts.map((post, index) => (
                 <div
                   key={post.id}
-                  className="rounded-2xl border bg-white p-5 shadow-sm"
+                  style={{ "--i": index }}
+                  className="glass glass-hover rounded-2xl p-5"
                 >
                   <div className="flex gap-4">
                   {post.picture && (
@@ -219,25 +214,25 @@ export default function ManagePage() {
                     <img
                       src={post.picture}
                       alt=""
-                      className="h-20 w-20 flex-shrink-0 rounded-lg border object-cover"
+                      className="app-img h-20 w-20 flex-shrink-0 rounded-lg object-cover"
                     />
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="whitespace-pre-wrap break-words text-sm text-slate-900">
+                    <p className="whitespace-pre-wrap break-words text-sm text-slate-200">
                       {post.message || post.story || (
-                        <span className="italic text-slate-400">
+                        <span className="italic text-slate-500">
                           (no text)
                         </span>
                       )}
                     </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
                       <span>{formatDate(post.createdTime)}</span>
                       {post.permalink && (
                         <a
                           href={post.permalink}
                           target="_blank"
                           rel="noreferrer"
-                          className="underline hover:text-slate-600"
+                          className="text-slate-200 underline hover:text-white"
                         >
                           View on Facebook
                         </a>
@@ -248,7 +243,7 @@ export default function ManagePage() {
                   <button
                     onClick={() => deletePost(post.id)}
                     disabled={deletingId === post.id}
-                    className="h-fit rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-40"
+                    className="btn btn-danger h-fit"
                   >
                     {deletingId === post.id ? "Deleting…" : "Delete"}
                   </button>
@@ -268,11 +263,11 @@ export default function ManagePage() {
 
       <p className="mt-8 text-sm text-slate-500">
         Go back to{" "}
-        <Link href="/connect" className="font-medium text-slate-900 underline">
+        <Link href="/connect" className="text-slate-200 underline hover:text-white">
           Connect
         </Link>{" "}
         or{" "}
-        <Link href="/post" className="font-medium text-slate-900 underline">
+        <Link href="/post" className="text-slate-200 underline hover:text-white">
           Create Post
         </Link>
         .

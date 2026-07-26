@@ -47,11 +47,14 @@ const YT_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
 const YT_REDIRECT_URI = "http://localhost:3001/api/auth/youtube/callback";
 const YT_STORAGE_KEY = "youtube_access_token";
 // Scopes: readonly (channel/videos) + force-ssl (comment reply) +
-// yt-analytics.readonly (analytics). Add youtube.upload later for uploads.
+// yt-analytics.readonly (analytics) + upload (publish videos). Note: on an
+// unverified Google app, videos uploaded with youtube.upload are forced to
+// private-locked until the app passes verification.
 const YT_SCOPE = [
   "https://www.googleapis.com/auth/youtube.readonly",
   "https://www.googleapis.com/auth/youtube.force-ssl",
   "https://www.googleapis.com/auth/yt-analytics.readonly",
+  "https://www.googleapis.com/auth/youtube.upload",
 ].join(" ");
 
 function buildYouTubeAuthUrl() {
@@ -344,45 +347,137 @@ export default function ConnectPage() {
 
   const connectedCount = platforms.filter((p) => p.connected).length;
 
+  // Presentation-only: per-platform accent styling keyed off the platform name.
+  // Does not change any data — purely picks Tailwind classes for the accent
+  // glow, icon tile, and connected pill of each card.
+  const accentFor = (name) => {
+    switch (name) {
+      case "YouTube":
+        return {
+          text: "text-rose-400",
+          ring: "ring-rose-400/20",
+          glow: "from-rose-500/20",
+          tile: "border-rose-400/20 bg-rose-400/10",
+          dot: "bg-rose-400",
+        };
+      case "Facebook":
+        return {
+          text: "text-indigo-400",
+          ring: "ring-indigo-400/20",
+          glow: "from-indigo-500/20",
+          tile: "border-indigo-400/20 bg-indigo-400/10",
+          dot: "bg-indigo-400",
+        };
+      case "LinkedIn":
+        return {
+          text: "text-sky-400",
+          ring: "ring-sky-400/20",
+          glow: "from-sky-500/20",
+          tile: "border-sky-400/20 bg-sky-400/10",
+          dot: "bg-sky-400",
+        };
+      default:
+        return {
+          text: "text-slate-400",
+          ring: "ring-white/10",
+          glow: "from-white/5",
+          tile: "border-white/10 bg-white/5",
+          dot: "bg-slate-500",
+        };
+    }
+  };
+
+  const progressPct = Math.round((connectedCount / platforms.length) * 100);
+
   return (
-    <div className="mx-auto max-w-5xl px-6 py-10">
-        <div className="mb-10">
-          <h1 className="text-3xl font-bold text-slate-900">
+    <div className="rise-in mx-auto max-w-6xl px-6 py-10">
+      {/* Hero header */}
+      <header className="glass relative mb-10 overflow-hidden rounded-3xl p-8 sm:p-10">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-gradient-to-br from-indigo-500/25 via-sky-500/15 to-transparent blur-3xl"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-28 -left-16 h-64 w-64 rounded-full bg-gradient-to-tr from-rose-500/20 to-transparent blur-3xl"
+        />
+        <div className="relative">
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-300">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+            </span>
+            Integrations hub
+          </span>
+
+          <h1 className="balance mt-4 text-4xl font-bold text-white sm:text-5xl">
             Connect Social Accounts
           </h1>
 
-          <p className="mt-2 text-slate-500">
+          <p className="pretty mt-3 max-w-xl text-slate-400">
             Connect your social media accounts to publish posts from one place.
           </p>
-        </div>
 
-        {errorMsg && (
-          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            Connection failed: {errorMsg}
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3.5 py-1.5 text-sm font-medium text-emerald-300">
+              <span className="tabular">{connectedCount}</span> connected
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-sm font-medium text-slate-300">
+              <span className="tabular">{platforms.length}</span> platforms
+            </span>
           </div>
-        )}
+        </div>
+      </header>
 
-        <div className="grid gap-5 md:grid-cols-2">
-          {platforms.map((platform) => (
+      {errorMsg && (
+        <div className="mb-6 rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-200">
+          Connection failed: {errorMsg}
+        </div>
+      )}
+
+      <div className="stagger grid gap-5 md:grid-cols-2">
+        {platforms.map((platform, index) => {
+          const accent = accentFor(platform.name);
+          return (
             <div
               key={platform.name}
-              className="rounded-2xl border bg-white p-6 shadow-sm transition hover:shadow-md"
+              style={{ "--i": index }}
+              className={`glass glass-hover group relative overflow-hidden rounded-2xl p-6 ${
+                platform.connected ? `ring-1 ${accent.ring}` : ""
+              }`}
             >
-              <div className="flex items-center justify-between">
+              <div
+                aria-hidden
+                className={`pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-gradient-to-br ${accent.glow} to-transparent blur-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100 ${
+                  platform.connected ? "opacity-100" : ""
+                }`}
+              />
+              <div className="relative flex items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-3xl">
+                  <div
+                    className={`flex h-14 w-14 items-center justify-center rounded-xl border text-3xl ${accent.tile}`}
+                  >
                     {platform.icon}
                   </div>
 
-                  <div>
-                    <h2 className="font-semibold text-lg">{platform.name}</h2>
+                  <div className="min-w-0">
+                    <h2 className={`text-lg font-semibold ${accent.text}`}>
+                      {platform.name}
+                    </h2>
 
                     {platform.connected ? (
-                      <p className="text-sm text-green-600">
-                        Connected as {platform.account}
+                      <p className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-emerald-300">
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${accent.dot}`}
+                        />
+                        <span className="truncate">
+                          Connected as {platform.account}
+                        </span>
                       </p>
                     ) : (
-                      <p className="text-sm text-slate-500">Not Connected</p>
+                      <p className="mt-0.5 text-sm text-slate-500">
+                        Not Connected
+                      </p>
                     )}
                   </div>
                 </div>
@@ -390,7 +485,7 @@ export default function ConnectPage() {
                 {platform.connected ? (
                   <button
                     onClick={platform.onDisconnect}
-                    className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                    className="btn btn-danger shrink-0"
                   >
                     Disconnect
                   </button>
@@ -398,7 +493,7 @@ export default function ConnectPage() {
                   <button
                     onClick={platform.onConnect}
                     disabled={!platform.onConnect}
-                    className="rounded-lg bg-black px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-40"
+                    className="btn btn-primary shrink-0"
                   >
                     Connect
                   </button>
@@ -406,9 +501,9 @@ export default function ConnectPage() {
               </div>
 
               {platform.isLinkedIn && platform.connected && (
-                <div className="mt-5 border-t pt-5">
+                <div className="relative mt-5 border-t border-white/10 pt-5">
                   {loadingProfile && !profile ? (
-                    <p className="text-sm text-slate-400">
+                    <p className="text-sm text-slate-500">
                       Loading LinkedIn profile…
                     </p>
                   ) : profile ? (
@@ -418,25 +513,25 @@ export default function ConnectPage() {
                         <img
                           src={profile.picture}
                           alt={profile.name}
-                          className="h-12 w-12 rounded-full object-cover"
+                          className="app-img h-12 w-12 rounded-full object-cover ring-2 ring-white/10"
                         />
                       ) : (
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-lg font-semibold text-slate-600">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/5 text-lg font-semibold text-slate-300">
                           {profile.name?.[0] ?? "?"}
                         </div>
                       )}
 
                       <div className="min-w-0">
-                        <p className="truncate font-medium text-slate-900">
+                        <p className="truncate font-medium text-white">
                           {profile.name}
                         </p>
                         {profile.email && (
-                          <p className="truncate text-sm text-slate-500">
+                          <p className="truncate text-sm text-slate-400">
                             {profile.email}
                             {profile.email_verified ? " ✓" : ""}
                           </p>
                         )}
-                        <p className="truncate text-xs text-slate-400">
+                        <p className="truncate text-xs text-slate-500">
                           ID: {profile.sub}
                         </p>
                       </div>
@@ -446,29 +541,34 @@ export default function ConnectPage() {
               )}
 
               {platform.isFacebook && platform.connected && (
-                <div className="mt-5 border-t pt-5">
+                <div className="relative mt-5 border-t border-white/10 pt-5">
                   {fbLoading && fbPages.length === 0 ? (
-                    <p className="text-sm text-slate-400">
+                    <p className="text-sm text-slate-500">
                       Loading Facebook Pages…
                     </p>
                   ) : fbError ? (
-                    <p className="text-sm text-red-600">{fbError}</p>
+                    <p className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-200">
+                      {fbError}
+                    </p>
                   ) : fbPages.length > 0 ? (
                     <div className="space-y-3">
-                      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                         Pages you manage
                       </p>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-slate-500">
                         Tick the Pages to use in the app. Leave all unticked to
                         show every Page.
                       </p>
                       {fbPages.map((page) => (
-                        <div key={page.id} className="flex items-center gap-4">
+                        <label
+                          key={page.id}
+                          className="flex cursor-pointer items-center gap-4 rounded-xl border border-white/5 bg-white/[0.03] p-3 transition hover:border-white/10 hover:bg-white/[0.06]"
+                        >
                           <input
                             type="checkbox"
                             checked={enabledPageIds.includes(page.id)}
                             onChange={() => togglePageEnabled(page.id)}
-                            className="h-4 w-4 flex-shrink-0"
+                            className="h-4 w-4 flex-shrink-0 accent-indigo-400"
                             title="Show this Page in the app"
                           />
                           {page.picture ? (
@@ -476,32 +576,32 @@ export default function ConnectPage() {
                             <img
                               src={page.picture}
                               alt={page.name}
-                              className="h-12 w-12 rounded-full object-cover"
+                              className="app-img h-12 w-12 rounded-full object-cover ring-2 ring-white/10"
                             />
                           ) : (
-                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-lg font-semibold text-slate-600">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/5 text-lg font-semibold text-slate-300">
                               {page.name?.[0] ?? "?"}
                             </div>
                           )}
 
                           <div className="min-w-0">
-                            <p className="truncate font-medium text-slate-900">
+                            <p className="truncate font-medium text-white">
                               {page.name}
                             </p>
                             {page.category && (
-                              <p className="truncate text-sm text-slate-500">
+                              <p className="truncate text-sm text-slate-400">
                                 {page.category}
                               </p>
                             )}
-                            <p className="truncate text-xs text-slate-400">
+                            <p className="truncate text-xs text-slate-500">
                               ID: {page.id}
                             </p>
                           </div>
-                        </div>
+                        </label>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-slate-400">
+                    <p className="text-sm text-slate-500">
                       No Pages found for this account.
                     </p>
                   )}
@@ -509,13 +609,13 @@ export default function ConnectPage() {
               )}
 
               {platform.isYouTube && platform.connected && (
-                <div className="mt-5 border-t pt-5">
+                <div className="relative mt-5 border-t border-white/10 pt-5">
                   {ytLoading && !ytChannel ? (
-                    <p className="text-sm text-slate-400">
+                    <p className="text-sm text-slate-500">
                       Loading YouTube channel…
                     </p>
                   ) : ytError ? (
-                    <p className="text-sm text-red-600">
+                    <p className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-200">
                       {ytError} — try reconnecting (Google tokens expire after
                       about an hour).
                     </p>
@@ -526,19 +626,19 @@ export default function ConnectPage() {
                         <img
                           src={ytChannel.thumbnail}
                           alt={ytChannel.title}
-                          className="h-12 w-12 rounded-full object-cover"
+                          className="app-img h-12 w-12 rounded-full object-cover ring-2 ring-rose-400/20"
                         />
                       ) : (
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-lg font-semibold text-slate-600">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/5 text-lg font-semibold text-slate-300">
                           {ytChannel.title?.[0] ?? "?"}
                         </div>
                       )}
 
                       <div className="min-w-0">
-                        <p className="truncate font-medium text-slate-900">
+                        <p className="truncate font-medium text-white">
                           {ytChannel.title}
                         </p>
-                        <p className="truncate text-sm text-slate-500">
+                        <p className="truncate text-sm text-slate-400">
                           {ytChannel.subscribers != null
                             ? `${Number(
                                 ytChannel.subscribers
@@ -550,7 +650,7 @@ export default function ConnectPage() {
                               ).toLocaleString()} videos`
                             : ""}
                         </p>
-                        <p className="truncate text-xs text-slate-400">
+                        <p className="truncate text-xs text-slate-500">
                           ID: {ytChannel.id}
                         </p>
                       </div>
@@ -559,34 +659,43 @@ export default function ConnectPage() {
                 </div>
               )}
             </div>
-          ))}
-        </div>
+          );
+        })}
+      </div>
 
-        {token && (
-          <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-6">
-            <h3 className="mb-2 font-semibold text-green-800">
-              LinkedIn Access Token (saved to localStorage)
-            </h3>
-            <p className="break-all font-mono text-xs text-green-700">
-              {token}
+      {token && (
+        <div className="glass mt-6 rounded-2xl border-emerald-400/30 bg-emerald-400/10 p-6">
+          <h3 className="mb-2 font-semibold text-emerald-300">
+            LinkedIn Access Token (saved to localStorage)
+          </h3>
+          <p className="break-all font-mono text-xs text-emerald-300/80">
+            {token}
+          </p>
+        </div>
+      )}
+
+      <div className="glass mt-6 rounded-2xl p-6">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <h3 className="font-semibold text-white">Connected Accounts</h3>
+            <p className="mt-1 text-sm text-slate-400">
+              <span className="tabular">{connectedCount}</span> of{" "}
+              <span className="tabular">{platforms.length}</span> platforms
+              connected.
             </p>
           </div>
-        )}
+          <span className="tabular text-2xl font-bold text-white">
+            {progressPct}%
+          </span>
+        </div>
 
-        <div className="mt-6 rounded-2xl border bg-white p-6">
-          <h3 className="mb-2 font-semibold">Connected Accounts</h3>
-
-          <p className="text-sm text-slate-500">
-            {connectedCount} of {platforms.length} platforms connected.
-          </p>
-
-          <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
-            <div
-              className="h-full rounded-full bg-green-500 transition-all"
-              style={{ width: `${(connectedCount / platforms.length) * 100}%` }}
-            />
-          </div>
+        <div className="mt-4 h-3 overflow-hidden rounded-full border border-white/10 bg-white/5">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-sky-400 transition-all duration-500"
+            style={{ width: `${(connectedCount / platforms.length) * 100}%` }}
+          />
         </div>
       </div>
+    </div>
   );
 }

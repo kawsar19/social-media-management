@@ -8,11 +8,11 @@ const DAYS = 28;
 
 function StatCard({ label, value }) {
   return (
-    <div className="rounded-2xl border bg-white p-5 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+    <div className="glass glass-hover rounded-2xl p-5">
+      <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
         {label}
       </p>
-      <p className="mt-1 text-2xl font-bold text-slate-900">{value ?? "—"}</p>
+      <p className="tabular mt-2 text-3xl font-bold text-white">{value ?? "—"}</p>
     </div>
   );
 }
@@ -69,55 +69,59 @@ export default function YouTubeInsightsPage() {
   const maxViews = daily.reduce((m, d) => Math.max(m, d.views || 0), 0);
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-10">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900">YouTube Analytics</h1>
-        <p className="mt-2 text-slate-500">
-          Channel performance over the last {DAYS} days
-          {range ? ` (${range.startDate} → ${range.endDate})` : ""}.
-        </p>
-      </div>
+    <div className="rise-in mx-auto max-w-5xl px-6 py-10">
+      <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-4">
+          <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-500 to-orange-400 text-2xl shadow-lg shadow-rose-500/20">
+            ▶
+          </span>
+          <div>
+            <h1 className="balance text-3xl font-bold text-white">
+              YouTube Analytics
+            </h1>
+            <p className="pretty mt-2 text-slate-400">
+              Channel performance over the last {DAYS} days
+              {range ? ` (${range.startDate} → ${range.endDate})` : ""}.
+            </p>
+          </div>
+        </div>
+
+        {connected && (
+          <button
+            onClick={() => loadAnalytics(ytToken)}
+            className="btn btn-ghost flex-shrink-0"
+          >
+            ↻ Refresh
+          </button>
+        )}
+      </header>
 
       {!connected && (
-        <div className="mb-6 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <p className="text-sm text-amber-800">
-            No YouTube channel connected yet.
-          </p>
-          <Link
-            href="/connect"
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-          >
+        <div className="mb-6 flex flex-col items-start justify-between gap-3 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-amber-200 sm:flex-row sm:items-center">
+          <p className="text-sm">No YouTube channel connected yet.</p>
+          <Link href="/connect" className="btn flex-shrink-0">
             Go to Connect
           </Link>
         </div>
       )}
 
-      {connected && (
-        <div className="mb-6 flex justify-end">
-          <button
-            onClick={() => loadAnalytics(ytToken)}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-          >
-            ↻ Refresh
-          </button>
-        </div>
-      )}
-
       {error && (
-        <div className="mb-6 break-all rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <div className="mb-6 break-all rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-200">
           {error} — try reconnecting on the{" "}
-          <Link href="/connect" className="font-medium underline">
+          <Link href="/connect" className="font-medium underline hover:text-white">
             Connect
           </Link>{" "}
           page (Google tokens expire after about an hour).
         </div>
       )}
 
-      {loading && <p className="text-sm text-slate-400">Loading analytics…</p>}
+      {loading && (
+        <p className="text-sm text-slate-500">Loading analytics…</p>
+      )}
 
       {!loading && totals && (
         <>
-          <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="stagger mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Views" value={fmtNum(totals.views)} />
             <StatCard
               label="Watch time (min)"
@@ -130,24 +134,33 @@ export default function YouTubeInsightsPage() {
             />
           </div>
 
-          <div className="rounded-2xl border bg-white p-6 shadow-sm">
-            <h2 className="mb-4 text-sm font-semibold text-slate-900">
-              Daily breakdown
-            </h2>
+          <div className="glass rounded-2xl p-6">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
+                Daily breakdown
+              </h2>
+              <span className="flex items-center gap-2 text-xs text-slate-500">
+                <span className="h-2 w-6 rounded-full bg-gradient-to-r from-rose-500 to-orange-400" />
+                Views
+              </span>
+            </div>
             {daily.length === 0 ? (
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-slate-500">
                 No daily data available for this range.
               </p>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 {daily.map((d) => (
-                  <div key={d.date} className="flex items-center gap-3 text-xs">
-                    <span className="w-24 flex-shrink-0 text-slate-500">
+                  <div
+                    key={d.date}
+                    className="flex items-center gap-3 text-xs"
+                  >
+                    <span className="tabular w-24 flex-shrink-0 text-slate-500">
                       {d.date}
                     </span>
-                    <div className="h-4 flex-1 overflow-hidden rounded bg-slate-100">
+                    <div className="h-4 flex-1 overflow-hidden rounded-full bg-white/10">
                       <div
-                        className="h-full rounded bg-red-500"
+                        className="h-full rounded-full bg-gradient-to-r from-rose-500 to-orange-400"
                         style={{
                           width: `${
                             maxViews > 0 ? ((d.views || 0) / maxViews) * 100 : 0
@@ -155,10 +168,10 @@ export default function YouTubeInsightsPage() {
                         }}
                       />
                     </div>
-                    <span className="w-16 flex-shrink-0 text-right text-slate-900">
+                    <span className="tabular w-16 flex-shrink-0 text-right font-medium text-white">
                       {fmtNum(d.views)}
                     </span>
-                    <span className="w-24 flex-shrink-0 text-right text-slate-400">
+                    <span className="tabular w-24 flex-shrink-0 text-right text-slate-500">
                       {fmtNum(d.estimatedMinutesWatched)} min
                     </span>
                   </div>
@@ -169,13 +182,19 @@ export default function YouTubeInsightsPage() {
         </>
       )}
 
-      <p className="mt-8 text-sm text-slate-500">
+      <p className="pretty mt-8 text-sm text-slate-400">
         Go to{" "}
-        <Link href="/youtube" className="font-medium text-slate-900 underline">
+        <Link
+          href="/youtube"
+          className="font-medium text-slate-200 underline hover:text-white"
+        >
           YouTube Videos
         </Link>{" "}
         or{" "}
-        <Link href="/connect" className="font-medium text-slate-900 underline">
+        <Link
+          href="/connect"
+          className="font-medium text-slate-200 underline hover:text-white"
+        >
           Connect
         </Link>
         .

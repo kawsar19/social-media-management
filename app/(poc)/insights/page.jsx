@@ -8,11 +8,16 @@ const FB_KEY = "facebook_user_access_token";
 
 function StatCard({ label, value }) {
   return (
-    <div className="rounded-2xl border bg-white p-5 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-        {label}
+    <div className="glass glass-hover rounded-2xl p-5">
+      <div className="flex items-start justify-between">
+        <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+          {label}
+        </p>
+        <span className="h-2 w-2 rounded-full bg-indigo-400/70 shadow-[0_0_12px] shadow-indigo-400/50" />
+      </div>
+      <p className="tabular mt-3 text-3xl font-bold text-white">
+        {value ?? "—"}
       </p>
-      <p className="mt-1 text-2xl font-bold text-slate-900">{value ?? "—"}</p>
     </div>
   );
 }
@@ -96,38 +101,47 @@ export default function InsightsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-10">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900">Page Insights</h1>
-        <p className="mt-2 text-slate-500">
-          Engagement stats for your Facebook Pages and their recent posts.
-        </p>
+    <div className="rise-in mx-auto max-w-5xl px-6 py-10">
+      <div className="mb-8 flex items-center gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-indigo-400/20 bg-indigo-400/10 text-indigo-300">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-6 w-6"
+          >
+            <path d="M3 3v18h18" />
+            <path d="M7 14l3-4 3 3 4-6" />
+          </svg>
+        </div>
+        <div>
+          <h1 className="balance text-3xl font-bold text-white">
+            Page Insights
+          </h1>
+          <p className="pretty mt-2 text-slate-400">
+            Engagement stats for your Facebook Pages and their recent posts.
+          </p>
+        </div>
       </div>
 
       {!connected && (
-        <div className="mb-6 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <p className="text-sm text-amber-800">
-            No Facebook account connected yet.
-          </p>
-          <Link
-            href="/connect"
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-          >
+        <div className="mb-6 flex items-center justify-between gap-4 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-amber-200">
+          <p className="pretty text-sm">No Facebook account connected yet.</p>
+          <Link href="/connect" className="btn shrink-0">
             Go to Connect
           </Link>
         </div>
       )}
 
       {connected && (
-        <div className="mb-6 rounded-2xl border bg-white p-6 shadow-sm">
-          <label className="mb-2 block text-sm font-medium text-slate-700">
+        <div className="glass mb-6 rounded-2xl p-6">
+          <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-slate-500">
             Choose a Page
           </label>
-          <select
-            value={selectedPageId}
-            onChange={onSelectPage}
-            className="w-full rounded-lg border border-slate-200 p-3 text-sm text-slate-900 outline-none focus:border-slate-400"
-          >
+          <select value={selectedPageId} onChange={onSelectPage} className="field w-full">
             <option value="">— Select a Page —</option>
             {pages.map((p) => (
               <option key={p.id} value={p.id}>
@@ -139,17 +153,22 @@ export default function InsightsPage() {
       )}
 
       {error && (
-        <div className="mb-6 break-all rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <div className="mb-6 break-all rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-200">
           {error}
         </div>
       )}
 
-      {loading && <p className="text-sm text-slate-400">Loading insights…</p>}
+      {loading && (
+        <div className="flex items-center gap-3 text-sm text-slate-400">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-400/30 border-t-indigo-400" />
+          Loading insights…
+        </div>
+      )}
 
       {!loading && pageStats && (
         <>
           {/* Page-level + aggregate stat cards */}
-          <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="stagger mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Followers" value={pageStats.followers} />
             <StatCard label="Total Likes (recent)" value={totals.likes} />
             <StatCard label="Total Comments (recent)" value={totals.comments} />
@@ -158,27 +177,32 @@ export default function InsightsPage() {
 
           {/* Per-post table */}
           {posts.length === 0 ? (
-            <p className="text-sm text-slate-400">No posts to analyze.</p>
+            <div className="glass rounded-2xl p-8 text-center text-sm text-slate-500">
+              No posts to analyze.
+            </div>
           ) : (
-            <div className="overflow-x-auto rounded-2xl border bg-white shadow-sm">
+            <div className="glass overflow-x-auto rounded-2xl">
               <table className="w-full min-w-[640px] text-left text-sm">
-                <thead className="border-b bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
+                <thead className="bg-white/5 text-xs uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="px-4 py-3">Post</th>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3 text-right">Reach</th>
-                    <th className="px-4 py-3 text-right">Likes</th>
-                    <th className="px-4 py-3 text-right">Comments</th>
-                    <th className="px-4 py-3 text-right">Shares</th>
+                    <th className="px-4 py-3 font-medium">Post</th>
+                    <th className="px-4 py-3 font-medium">Date</th>
+                    <th className="px-4 py-3 text-right font-medium">Reach</th>
+                    <th className="px-4 py-3 text-right font-medium">Likes</th>
+                    <th className="px-4 py-3 text-right font-medium">Comments</th>
+                    <th className="px-4 py-3 text-right font-medium">Shares</th>
                   </tr>
                 </thead>
                 <tbody>
                   {posts.map((p) => (
-                    <tr key={p.id} className="border-b last:border-0">
+                    <tr
+                      key={p.id}
+                      className="border-t border-white/10 transition-colors hover:bg-white/5"
+                    >
                       <td className="max-w-[240px] px-4 py-3">
-                        <p className="truncate text-slate-900">
+                        <p className="truncate text-slate-200">
                           {p.message || (
-                            <span className="italic text-slate-400">
+                            <span className="italic text-slate-500">
                               (no text)
                             </span>
                           )}
@@ -188,25 +212,25 @@ export default function InsightsPage() {
                             href={p.permalink}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-xs text-slate-400 underline hover:text-slate-600"
+                            className="text-xs text-slate-400 underline hover:text-white"
                           >
                             View
                           </a>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-500">
+                      <td className="px-4 py-3 text-slate-400">
                         {fmtDate(p.createdTime)}
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-900">
+                      <td className="tabular px-4 py-3 text-right text-slate-200">
                         {p.reach ?? "—"}
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-900">
+                      <td className="tabular px-4 py-3 text-right text-slate-200">
                         {p.likes}
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-900">
+                      <td className="tabular px-4 py-3 text-right text-slate-200">
                         {p.comments}
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-900">
+                      <td className="tabular px-4 py-3 text-right text-slate-200">
                         {p.shares}
                       </td>
                     </tr>
@@ -218,13 +242,13 @@ export default function InsightsPage() {
         </>
       )}
 
-      <p className="mt-8 text-sm text-slate-500">
+      <p className="pretty mt-8 text-sm text-slate-400">
         Go to{" "}
-        <Link href="/manage" className="font-medium text-slate-900 underline">
+        <Link href="/manage" className="font-medium text-slate-200 underline hover:text-white">
           Manage Posts
         </Link>{" "}
         or{" "}
-        <Link href="/connect" className="font-medium text-slate-900 underline">
+        <Link href="/connect" className="font-medium text-slate-200 underline hover:text-white">
           Connect
         </Link>
         .
