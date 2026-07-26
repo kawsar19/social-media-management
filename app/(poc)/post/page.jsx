@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { filterEnabledPages } from "../lib/enabledPages";
 
 const LINKEDIN_KEY = "linkedin_access_token";
 const FB_KEY = "facebook_user_access_token";
@@ -45,7 +46,7 @@ export default function PostPage() {
       .then(async (res) => {
         const data = await res.json();
         if (cancelled) return;
-        if (res.ok) setFbPages(data.pages || []);
+        if (res.ok) setFbPages(filterEnabledPages(data.pages || []));
       })
       .catch(() => {})
       .finally(() => {

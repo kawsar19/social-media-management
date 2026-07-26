@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getEnabledPageIds, setEnabledPageIds } from "../lib/enabledPages";
 
 const LINKEDIN_CLIENT_ID = "869sxzia2ogeui";
 const REDIRECT_URI = "http://localhost:3001/api/auth/linkedin/callback";
@@ -53,6 +54,9 @@ export default function ConnectPage() {
   const [fbPages, setFbPages] = useState([]);
   const [fbLoading, setFbLoading] = useState(false);
   const [fbError, setFbError] = useState(null);
+
+  // Which Pages the user has chosen to show across the app. Empty = show all.
+  const [enabledPageIds, setEnabledPageIdsState] = useState([]);
 
   // On mount: read the access token from the URL hash (set by the callback
   // route), save it to localStorage, then clean the URL. Also restore any
@@ -125,9 +129,10 @@ export default function ConnectPage() {
     };
   }, [token]);
 
-  // On mount: restore a previously saved Facebook token.
+  // On mount: restore a previously saved Facebook token + enabled-Pages choice.
   useEffect(() => {
     setFbToken(localStorage.getItem(FB_STORAGE_KEY));
+    setEnabledPageIdsState(getEnabledPageIds());
   }, []);
 
   // Whenever we have a Facebook token, fetch the Pages it can manage
@@ -176,6 +181,15 @@ export default function ConnectPage() {
     setFbToken(null);
     setFbPages([]);
     setFbError(null);
+  }
+
+  // Toggle whether a Page is shown across the app, and persist the choice.
+  function togglePageEnabled(pageId) {
+    const next = enabledPageIds.includes(pageId)
+      ? enabledPageIds.filter((id) => id !== pageId)
+      : [...enabledPageIds, pageId];
+    setEnabledPageIdsState(next);
+    setEnabledPageIds(next);
   }
 
   function connectLinkedIn() {
@@ -331,8 +345,19 @@ export default function ConnectPage() {
                       <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
                         Pages you manage
                       </p>
+                      <p className="text-xs text-slate-400">
+                        Tick the Pages to use in the app. Leave all unticked to
+                        show every Page.
+                      </p>
                       {fbPages.map((page) => (
                         <div key={page.id} className="flex items-center gap-4">
+                          <input
+                            type="checkbox"
+                            checked={enabledPageIds.includes(page.id)}
+                            onChange={() => togglePageEnabled(page.id)}
+                            className="h-4 w-4 flex-shrink-0"
+                            title="Show this Page in the app"
+                          />
                           {page.picture ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
