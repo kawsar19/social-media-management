@@ -7,6 +7,8 @@ const links = [
   { href: "/post", label: "Post" },
   { href: "/manage", label: "Manage" },
   { href: "/insights", label: "Insights" },
+  { href: "/youtube", label: "YouTube" },
+  { href: "/youtube-insights", label: "YT Analytics" },
   { href: "/connect", label: "Connect" },
 ];
 

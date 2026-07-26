@@ -54,25 +54,64 @@ export async function GET(request) {
     );
   }
 
-  const comments = (data.items || []).map((thread) => {
-    const top = thread.snippet?.topLevelComment?.snippet || {};
-    const replies = (thread.replies?.comments || []).map((r) => ({
+  // Shape a single reply comment resource into our reply object.
+  function mapReply(r) {
+    return {
       id: r.id,
       author: r.snippet?.authorDisplayName || null,
+      authorImage: r.snippet?.authorProfileImageUrl || null,
       text: r.snippet?.textDisplay || null,
       likeCount: r.snippet?.likeCount ?? 0,
       publishedAt: r.snippet?.publishedAt || null,
-    }));
-    return {
-      id: thread.id,
-      author: top.authorDisplayName || null,
-      authorImage: top.authorProfileImageUrl || null,
-      text: top.textDisplay || null,
-      likeCount: top.likeCount ?? 0,
-      publishedAt: top.publishedAt || null,
-      replies,
     };
-  });
+  }
+
+  // commentThreads only inlines a *partial sample* of replies (and omits them
+  // entirely once a thread has enough), so a freshly posted reply or older
+  // ones can be missing. For any thread that reports replies, fetch the full,
+  // ordered list via comments.list?parentId. Falls back to the inline sample
+  // if that call fails.
+  async function fetchAllReplies(threadId, inline) {
+    if (!threadId) return (inline || []).map(mapReply);
+    const rUrl = new URL(`${YT}/comments`);
+    rUrl.searchParams.set("part", "snippet");
+    rUrl.searchParams.set("parentId", threadId);
+    rUrl.searchParams.set("maxResults", "100");
+    try {
+      const rRes = await fetchWithRetry(rUrl, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const rData = await rRes.json();
+      if (rRes.ok && !rData.error) {
+        // comments.list returns newest-first; reverse to chronological order.
+        return (rData.items || []).map(mapReply).reverse();
+      }
+    } catch {
+      // ignore and fall back
+    }
+    return (inline || []).map(mapReply);
+  }
+
+  const comments = await Promise.all(
+    (data.items || []).map(async (thread) => {
+      const top = thread.snippet?.topLevelComment?.snippet || {};
+      const replyCount = thread.snippet?.totalReplyCount ?? 0;
+      const inline = thread.replies?.comments || [];
+      // Only spend a request when the thread actually has replies.
+      const replies =
+        replyCount > 0 ? await fetchAllReplies(thread.id, inline) : [];
+      return {
+        id: thread.id,
+        author: top.authorDisplayName || null,
+        authorImage: top.authorProfileImageUrl || null,
+        text: top.textDisplay || null,
+        likeCount: top.likeCount ?? 0,
+        publishedAt: top.publishedAt || null,
+        replies,
+      };
+    })
+  );
 
   return NextResponse.json({ comments });
 }
