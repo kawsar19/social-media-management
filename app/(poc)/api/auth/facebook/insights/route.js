@@ -59,9 +59,12 @@ export async function GET(request) {
     return NextResponse.json({ error: tokenError }, { status: 400 });
   }
 
-  // Fetch recent posts with engagement counts + reach insight in one call.
+  // Fetch recent posts with engagement counts.
   // - likes.summary / comments.summary / shares give the counts
-  // - insights.metric(post_impressions_unique) gives reach
+  // Reach is fetched separately per-post below: nesting
+  // insights.metric(...) on the /feed edge fails with error (#100) as soon
+  // as a single post in the feed can't serve that metric (e.g. shared/link
+  // posts), which takes down the whole request.
   const url = new URL(`${GRAPH}/${pageId}/feed`);
   url.searchParams.set(
     "fields",
@@ -73,7 +76,6 @@ export async function GET(request) {
       "shares",
       "likes.summary(true).limit(0)",
       "comments.summary(true).limit(0)",
-      "insights.metric(post_impressions_unique)",
     ].join(",")
   );
   url.searchParams.set("limit", "25");
@@ -88,22 +90,39 @@ export async function GET(request) {
     );
   }
 
-  const posts = (data.data || []).map((p) => {
-    const reachInsight = (p.insights?.data || []).find(
-      (i) => i.name === "post_impressions_unique"
-    );
-    const reach = reachInsight?.values?.[0]?.value ?? null;
-    return {
-      id: p.id,
-      message: p.message || null,
-      createdTime: p.created_time || null,
-      permalink: p.permalink_url || null,
-      likes: p.likes?.summary?.total_count ?? 0,
-      comments: p.comments?.summary?.total_count ?? 0,
-      shares: p.shares?.count ?? 0,
-      reach,
-    };
-  });
+  const rawPosts = data.data || [];
+
+  // Fetch reach per post independently so one unsupported post doesn't fail
+  // the batch. Returns null when the metric isn't available for that post.
+  const reachByPost = await Promise.all(
+    rawPosts.map(async (p) => {
+      const insUrl = new URL(`${GRAPH}/${p.id}/insights`);
+      insUrl.searchParams.set("metric", "post_impressions_unique");
+      insUrl.searchParams.set("access_token", pageToken);
+      try {
+        const insRes = await fetchWithRetry(insUrl, { cache: "no-store" });
+        const insData = await insRes.json();
+        if (!insRes.ok || insData.error) return null;
+        const metric = (insData.data || []).find(
+          (i) => i.name === "post_impressions_unique"
+        );
+        return metric?.values?.[0]?.value ?? null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  const posts = rawPosts.map((p, idx) => ({
+    id: p.id,
+    message: p.message || null,
+    createdTime: p.created_time || null,
+    permalink: p.permalink_url || null,
+    likes: p.likes?.summary?.total_count ?? 0,
+    comments: p.comments?.summary?.total_count ?? 0,
+    shares: p.shares?.count ?? 0,
+    reach: reachByPost[idx],
+  }));
 
   return NextResponse.json({
     page: {
