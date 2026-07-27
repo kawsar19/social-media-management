@@ -30,6 +30,9 @@ export default function PostPage() {
   const [image, setImage] = useState(null); // File
   const [preview, setPreview] = useState(null); // object URL
 
+  // Facebook: optional video to post to a Page (separate from the image above).
+  const [fbVideo, setFbVideo] = useState(null); // File
+
   // Facebook Pages + which ones are selected to post to.
   const [fbPages, setFbPages] = useState([]);
   const [fbPagesLoading, setFbPagesLoading] = useState(false);
@@ -89,6 +92,17 @@ export default function PostPage() {
     setPreview(null);
   }
 
+  function onPickFbVideo(e) {
+    const file = e.target.files?.[0] ?? null;
+    setFbVideo(file);
+    // A video and an image can't share one post — picking a video drops the image.
+    if (file) clearImage();
+  }
+
+  function clearFbVideo() {
+    setFbVideo(null);
+  }
+
   function togglePage(id) {
     setSelectedPageIds((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
@@ -134,7 +148,9 @@ export default function PostPage() {
   async function publishFacebook() {
     const formData = new FormData();
     formData.append("text", text);
-    if (image) formData.append("image", image);
+    // A video takes precedence over an image (the API rejects both together).
+    if (fbVideo) formData.append("video", fbVideo);
+    else if (image) formData.append("image", image);
     formData.append("pageIds", JSON.stringify(selectedPageIds));
 
     const res = await fetch("/api/auth/facebook/share", {
@@ -153,6 +169,7 @@ export default function PostPage() {
     if (allOk) {
       setText("");
       clearImage();
+      clearFbVideo();
       setSelectedPageIds([]);
     }
   }
@@ -241,12 +258,14 @@ export default function PostPage() {
     platform === "facebook" && selectedPageIds.length === 0;
 
   const isYouTube = platform === "youtube";
-  // YouTube needs a video file + title; the other platforms need post text.
+  // YouTube needs a video file + title; the other platforms need post text —
+  // except Facebook, where a video alone (no text) is a valid post.
   const youtubeReady = Boolean(video) && ytTitle.trim().length > 0;
+  const hasPostBody = text.trim().length > 0 || (platform === "facebook" && Boolean(fbVideo));
   const canPublish =
     connected &&
     !publishing &&
-    (isYouTube ? youtubeReady : text.trim().length > 0 && !fbNoPageSelected);
+    (isYouTube ? youtubeReady : hasPostBody && !fbNoPageSelected);
 
   const platformLabel =
     platform === "linkedin"
@@ -403,33 +422,68 @@ export default function PostPage() {
               className="field w-full resize-none"
             />
 
-            <div className="mt-4">
-              {preview ? (
-                <div className="relative inline-block">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={preview}
-                    alt="Selected"
-                    className="app-img max-h-56 rounded-xl border border-white/10 object-cover"
-                  />
-                  <button
-                    onClick={clearImage}
-                    className="absolute right-2 top-2 rounded-full bg-black/70 px-2.5 py-1 text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ) : (
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:border-white/20 hover:bg-white/10">
-                  <FiImage className="h-4 w-4" /> Add image
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={onPickImage}
-                    className="hidden"
-                  />
-                </label>
-              )}
+            <div className="mt-4 flex flex-wrap items-start gap-3">
+              {/* Image picker — hidden once a Facebook video is chosen, since a
+                  post can carry a video or an image, not both. */}
+              {!fbVideo &&
+                (preview ? (
+                  <div className="relative inline-block">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={preview}
+                      alt="Selected"
+                      className="app-img max-h-56 rounded-xl border border-white/10 object-cover"
+                    />
+                    <button
+                      onClick={clearImage}
+                      className="absolute right-2 top-2 rounded-full bg-black/70 px-2.5 py-1 text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:border-white/20 hover:bg-white/10">
+                    <FiImage className="h-4 w-4" /> Add image
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={onPickImage}
+                      className="hidden"
+                    />
+                  </label>
+                ))}
+
+              {/* Facebook only: optional video (posted to the selected Pages). */}
+              {platform === "facebook" &&
+                !image &&
+                (fbVideo ? (
+                  <div className="flex items-center gap-3 rounded-xl border border-indigo-400/30 bg-indigo-400/10 p-3">
+                    <div className="min-w-0">
+                      <p className="inline-flex items-center gap-2 truncate text-sm font-medium text-white">
+                        <FiVideo className="h-4 w-4" /> {fbVideo.name}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        <span className="tabular">
+                          {(fbVideo.size / (1024 * 1024)).toFixed(1)}
+                        </span>{" "}
+                        MB
+                      </p>
+                    </div>
+                    <button onClick={clearFbVideo} className="btn btn-danger">
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:border-indigo-400/40 hover:bg-indigo-400/10">
+                    <FiVideo className="h-4 w-4" /> Add video
+                    <input
+                      type="file"
+                      accept="video/*"
+                      onChange={onPickFbVideo}
+                      className="hidden"
+                    />
+                  </label>
+                ))}
             </div>
           </>
         )}
