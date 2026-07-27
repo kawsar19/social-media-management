@@ -196,10 +196,15 @@ export async function POST(request) {
             new Blob([imageBytes], { type: image.type || "image/jpeg" }),
             image.name || "upload.jpg"
           );
-          const res = await fetchWithRetry(`${GRAPH}/${pageId}/photos`, {
-            method: "POST",
-            body,
-          });
+          // Uploading the image binary can exceed the default 15s (larger
+          // photos / slow uplinks), so give it a generous per-attempt timeout
+          // like the video chunks — otherwise it aborts as a false timeout.
+          const res = await fetchWithRetry(
+            `${GRAPH}/${pageId}/photos`,
+            { method: "POST", body },
+            3,
+            60000
+          );
           const data = await res.json();
           if (!res.ok || data.error) {
             return {

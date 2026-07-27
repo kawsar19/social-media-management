@@ -2,8 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { FaLinkedin, FaFacebook, FaYoutube, FaThreads } from "react-icons/fa6";
-import { FiImage, FiVideo, FiCheck, FiX, FiLoader, FiClock } from "react-icons/fi";
+import {
+  FaLinkedin,
+  FaFacebook,
+  FaYoutube,
+  FaThreads,
+  FaInstagram,
+} from "react-icons/fa6";
+import { FiImage, FiVideo, FiCheck, FiX, FiLoader, FiClock, FiLink } from "react-icons/fi";
 import { filterEnabledPages } from "../lib/enabledPages";
 
 const LINKEDIN_KEY = "linkedin_access_token";
@@ -16,6 +22,7 @@ const TH_USER_ID_KEY = "threads_user_id";
 const PLATFORMS = [
   { id: "linkedin", label: "LinkedIn", Icon: FaLinkedin, accent: "text-sky-400" },
   { id: "facebook", label: "Facebook", Icon: FaFacebook, accent: "text-indigo-400" },
+  { id: "instagram", label: "Instagram", Icon: FaInstagram, accent: "text-pink-400" },
   { id: "threads", label: "Threads", Icon: FaThreads, accent: "text-slate-100" },
   { id: "youtube", label: "YouTube", Icon: FaYoutube, accent: "text-rose-400" },
 ];
@@ -32,6 +39,7 @@ const STATUS = {
 
 export default function PublishPage() {
   // Connection tokens (read from localStorage, same keys as the Post page).
+  // Instagram rides on the Facebook token (no separate token of its own).
   const [tokens, setTokens] = useState({
     linkedin: null,
     facebook: null,
@@ -41,10 +49,20 @@ export default function PublishPage() {
   // Threads needs its user id (not just a token) to publish as the account.
   const [thUserId, setThUserId] = useState(null);
 
+  // Instagram accounts linked to the Facebook token (loaded when FB connected).
+  // IG publishing needs a chosen account id + a public media URL (below).
+  const [igAccounts, setIgAccounts] = useState([]);
+  const [selectedIgId, setSelectedIgId] = useState("");
+
+  // Optional public https media URL — the only way Instagram (and Threads) can
+  // take media, since they fetch it by URL rather than accepting an upload.
+  const [mediaUrl, setMediaUrl] = useState("");
+
   // Which platforms the user wants to publish to.
   const [selected, setSelected] = useState({
     linkedin: true,
     facebook: true,
+    instagram: true,
     youtube: true,
     threads: true,
   });
@@ -100,6 +118,29 @@ export default function PublishPage() {
     };
   }, [selected.facebook, tokens.facebook]);
 
+  // Load linked Instagram accounts when Instagram is selected + FB connected.
+  // IG rides on the Facebook token; we auto-select the first account found.
+  useEffect(() => {
+    if (!selected.instagram || !tokens.facebook) return;
+    let cancelled = false;
+    fetch("/api/auth/instagram/accounts", {
+      headers: { Authorization: `Bearer ${tokens.facebook}` },
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (cancelled) return;
+        if (res.ok) {
+          const accounts = data.accounts || [];
+          setIgAccounts(accounts);
+          setSelectedIgId((prev) => prev || accounts[0]?.id || "");
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [selected.instagram, tokens.facebook]);
+
   function onPickImage(e) {
     const file = e.target.files?.[0] ?? null;
     setImage(file);
@@ -138,6 +179,8 @@ export default function PublishPage() {
   const connected = {
     linkedin: Boolean(tokens.linkedin),
     facebook: Boolean(tokens.facebook),
+    // Instagram rides on the Facebook token + needs a linked IG account.
+    instagram: Boolean(tokens.facebook) && igAccounts.length > 0,
     youtube: Boolean(tokens.youtube),
     // User id is optional — the share route falls back to `/me`.
     threads: Boolean(tokens.threads),
@@ -145,23 +188,28 @@ export default function PublishPage() {
 
   const hasVideo = Boolean(video);
   const hasText = text.trim().length > 0;
+  const hasMediaUrl = mediaUrl.trim().length > 0;
+  // Treat a media URL as a video when it looks like one, else as an image.
+  const mediaUrlIsVideo = /\.(mp4|mov|m4v|webm)(\?|$)/i.test(mediaUrl.trim());
 
   // Which targets will actually run: selected + connected.
   //  - YouTube only runs when a video is present (no text-only mode).
-  //  - Threads runs on the text only here: this page uploads media as files,
-  //    but Threads fetches media from a public URL, so an uploaded image/video
-  //    can't be forwarded. With no text, there's nothing to post -> skipped.
+  //  - Instagram can't take uploaded files (it fetches media by URL) and has
+  //    no text-only mode, so it runs ONLY when a public media URL is given.
+  //  - Threads takes text and/or the public media URL. With neither -> skipped.
   function plannedStatus(id) {
     if (!selected[id] || !connected[id]) return null; // not in the run at all
     if (id === "youtube" && !hasVideo) return STATUS.skipped;
-    if (id === "threads" && !hasText) return STATUS.skipped;
+    if (id === "instagram" && !hasMediaUrl) return STATUS.skipped;
+    if (id === "threads" && !hasText && !hasMediaUrl) return STATUS.skipped;
     return STATUS.pending;
   }
 
   const activeTargets = PLATFORMS.filter((p) => plannedStatus(p.id) === STATUS.pending);
 
   // Can we publish? At least one active target, some content, and (for FB) a Page.
-  const hasContent = text.trim().length > 0 || hasVideo || Boolean(image);
+  const hasContent =
+    text.trim().length > 0 || hasVideo || Boolean(image) || hasMediaUrl;
   const fbNeedsPage =
     selected.facebook && connected.facebook && selectedPageIds.length === 0;
   const ytNeedsTitle =
@@ -231,17 +279,42 @@ export default function PublishPage() {
     return { ok: true, message: `Uploaded (${data.id}) — ${data.privacyStatus}` };
   }
 
+  async function runInstagram() {
+    // Instagram needs a chosen account + a public media URL (no text-only, no
+    // uploaded files). plannedStatus() already skips IG without a media URL.
+    const url = mediaUrl.trim();
+    const payload = { igUserId: selectedIgId, caption: text };
+    if (mediaUrlIsVideo) payload.videoUrl = url;
+    else payload.imageUrl = url;
+    const res = await fetch("/api/auth/instagram/share", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${tokens.facebook}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, message: data.error || "Failed to publish" };
+    return { ok: true, message: data.id ? `Published (${data.id})` : "Published" };
+  }
+
   async function runThreads() {
-    // Text-only post — this page's image/video are uploaded files, which
-    // Threads can't fetch (it needs a public URL). plannedStatus() already
-    // skips Threads when there's no text.
+    // Threads takes text and/or a public media URL (it can't fetch uploaded
+    // files). plannedStatus() skips Threads only when both are missing.
+    const url = mediaUrl.trim();
+    const payload = { userId: thUserId, text };
+    if (url) {
+      if (mediaUrlIsVideo) payload.videoUrl = url;
+      else payload.imageUrl = url;
+    }
     const res = await fetch("/api/auth/threads/share", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${tokens.threads}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ userId: thUserId, text }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { ok: false, message: data.error || "Failed to publish" };
@@ -251,6 +324,7 @@ export default function PublishPage() {
   const RUNNERS = {
     linkedin: runLinkedIn,
     facebook: runFacebook,
+    instagram: runInstagram,
     threads: runThreads,
     youtube: runYouTube,
   };
@@ -264,7 +338,11 @@ export default function PublishPage() {
       const st = plannedStatus(p.id);
       if (st) {
         const skipMsg =
-          p.id === "threads" ? "No text — skipped" : "No video — skipped";
+          p.id === "threads"
+            ? "No text or media URL — skipped"
+            : p.id === "instagram"
+            ? "No media URL — skipped"
+            : "No video — skipped";
         initial[p.id] = {
           status: st,
           message: st === STATUS.skipped ? skipMsg : "Waiting…",
@@ -304,6 +382,7 @@ export default function PublishPage() {
   const anyConnected =
     connected.linkedin ||
     connected.facebook ||
+    connected.instagram ||
     connected.youtube ||
     connected.threads;
   const allDone =
@@ -462,6 +541,38 @@ export default function PublishPage() {
             ))}
         </div>
 
+        {/* Public media URL — the only way Instagram (and Threads media) can
+            receive an image/video, since they fetch it by URL. Optional. */}
+        {((selected.instagram && connected.instagram) ||
+          (selected.threads && connected.threads)) && (
+          <div className="mt-4">
+            <label className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-pink-400">
+              <FiLink className="h-3.5 w-3.5" /> Public media URL (for Instagram
+              / Threads)
+            </label>
+            <input
+              type="url"
+              value={mediaUrl}
+              onChange={(e) => setMediaUrl(e.target.value)}
+              placeholder="https://example.com/photo.jpg  (image or .mp4 video)"
+              className="field w-full text-sm"
+            />
+            {selected.instagram && connected.instagram && igAccounts.length > 1 && (
+              <select
+                value={selectedIgId}
+                onChange={(e) => setSelectedIgId(e.target.value)}
+                className="field mt-2 w-full text-sm"
+              >
+                {igAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.username ? `@${acc.username}` : acc.name || acc.id}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
+
         {/* YouTube extras — only relevant with a video */}
         {selected.youtube && connected.youtube && hasVideo && (
           <div className="mt-4 grid gap-3 rounded-xl border border-rose-400/20 bg-rose-400/5 p-4 sm:grid-cols-[1fr_auto]">
@@ -491,11 +602,17 @@ export default function PublishPage() {
             YouTube needs a video — it will be skipped for this text/image post.
           </p>
         ) : null}
+        {selected.instagram && connected.instagram && !hasMediaUrl && (
+          <p className="mt-1.5 text-xs text-slate-500">
+            Instagram needs a public media URL (it can&apos;t use uploaded files
+            and has no text-only post) — it&apos;s skipped until you add one
+            above.
+          </p>
+        )}
         {selected.threads && connected.threads && (
           <p className="mt-1.5 text-xs text-slate-500">
-            Threads posts the text only here (uploaded media can&apos;t be
-            forwarded) — it&apos;s skipped for a media-only post. Use the Post
-            page with a public media URL to post an image or video to Threads.
+            Threads posts your text, plus the public media URL if you add one
+            (uploaded files can&apos;t be forwarded to Threads).
           </p>
         )}
 
