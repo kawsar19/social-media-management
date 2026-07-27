@@ -6,6 +6,7 @@ import {
   FaFacebook,
   FaYoutube,
   FaInstagram,
+  FaThreads,
   FaXTwitter,
   FaTiktok,
 } from "react-icons/fa6";
@@ -80,6 +81,31 @@ function buildYouTubeAuthUrl() {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
+// Threads OAuth. Separate Meta app from Facebook — its own App ID, redirect,
+// and host (threads.net). The App ID is public (exposed via NEXT_PUBLIC_*); the
+// Secret stays server-side and is only used by the callback route. Scopes:
+// threads_basic (read profile) + threads_content_publish (create posts).
+const TH_APP_ID = process.env.NEXT_PUBLIC_THREADS_APP_ID || "";
+// Meta blocks http/localhost OAuth, so this is a public https URL (ngrok tunnel)
+// read from env — it must match THREADS_REDIRECT_URI the callback route uses.
+const TH_REDIRECT_URI =
+  process.env.NEXT_PUBLIC_THREADS_REDIRECT_URI ||
+  "http://localhost:3001/api/auth/threads/callback";
+const TH_SCOPE = "threads_basic,threads_content_publish";
+const TH_STORAGE_KEY = "threads_access_token";
+const TH_USER_ID_KEY = "threads_user_id";
+
+function buildThreadsAuthUrl() {
+  const params = new URLSearchParams({
+    client_id: TH_APP_ID,
+    redirect_uri: TH_REDIRECT_URI,
+    response_type: "code",
+    scope: TH_SCOPE,
+    state: "poc",
+  });
+  return `https://threads.net/oauth/authorize?${params.toString()}`;
+}
+
 export default function ConnectPage() {
   const [token, setToken] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -113,6 +139,14 @@ export default function ConnectPage() {
   const [igLoading, setIgLoading] = useState(false);
   const [igError, setIgError] = useState(null);
 
+  // Threads: standalone OAuth (its own Meta app), same pattern as YouTube. The
+  // callback returns the access token + Threads user id in the URL hash; we
+  // save both and load the profile to confirm the connection.
+  const [thToken, setThToken] = useState(null);
+  const [thProfile, setThProfile] = useState(null);
+  const [thLoading, setThLoading] = useState(false);
+  const [thError, setThError] = useState(null);
+
   // On mount: read the access token from the URL hash (set by the callback
   // route), save it to localStorage, then clean the URL. Also restore any
   // previously saved token.
@@ -142,6 +176,18 @@ export default function ConnectPage() {
       if (ytAccessToken) {
         localStorage.setItem(YT_STORAGE_KEY, ytAccessToken);
         setYtToken(ytAccessToken);
+        window.history.replaceState(null, "", "/connect");
+        return;
+      }
+
+      // Threads callback returns its token under threads_access_token, plus the
+      // Threads user id (needed later to publish as this account).
+      const thAccessToken = hash.get("threads_access_token");
+      if (thAccessToken) {
+        localStorage.setItem(TH_STORAGE_KEY, thAccessToken);
+        const thUserId = hash.get("threads_user_id");
+        if (thUserId) localStorage.setItem(TH_USER_ID_KEY, thUserId);
+        setThToken(thAccessToken);
         window.history.replaceState(null, "", "/connect");
         return;
       }
@@ -203,6 +249,49 @@ export default function ConnectPage() {
   useEffect(() => {
     setYtToken(localStorage.getItem(YT_STORAGE_KEY));
   }, []);
+
+  // On mount: restore a previously saved Threads token.
+  useEffect(() => {
+    setThToken(localStorage.getItem(TH_STORAGE_KEY));
+  }, []);
+
+  // Whenever we have a Threads token, load the profile via our
+  // /api/auth/threads/profile proxy to confirm the connection.
+  useEffect(() => {
+    if (!thToken) {
+      setThProfile(null);
+      return;
+    }
+
+    let cancelled = false;
+    setThLoading(true);
+    setThError(null);
+
+    fetch("/api/auth/threads/profile", {
+      headers: { Authorization: `Bearer ${thToken}` },
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          // Most likely an expired/invalid token.
+          setThError(data.error || "Failed to load Threads profile");
+          setThProfile(null);
+        } else {
+          setThProfile(data);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setThError("Failed to load Threads profile");
+      })
+      .finally(() => {
+        if (!cancelled) setThLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [thToken]);
 
   // Whenever we have a YouTube token, load the channel to confirm the
   // connection via our /api/auth/youtube/channel proxy.
@@ -345,6 +434,35 @@ export default function ConnectPage() {
     setYtError(null);
   }
 
+  function connectThreads() {
+    if (!TH_APP_ID) {
+      setThError(
+        "Missing NEXT_PUBLIC_THREADS_APP_ID — add your Threads App ID to .env.local"
+      );
+      return;
+    }
+    window.location.href = buildThreadsAuthUrl();
+  }
+
+  function disconnectThreads() {
+    localStorage.removeItem(TH_STORAGE_KEY);
+    localStorage.removeItem(TH_USER_ID_KEY);
+    setThToken(null);
+    setThProfile(null);
+    setThError(null);
+  }
+
+  // Manual token path: paste a token straight from Meta's Threads token
+  // generator (developers.facebook.com/apps/.../threads) instead of running the
+  // OAuth redirect. Saving it triggers the same profile-load effect as OAuth.
+  function saveThreadsToken(raw) {
+    const t = raw.trim();
+    if (!t) return;
+    localStorage.setItem(TH_STORAGE_KEY, t);
+    setThToken(t);
+    setThError(null);
+  }
+
   // Toggle whether a Page is shown across the app, and persist the choice.
   function togglePageEnabled(pageId) {
     const next = enabledPageIds.includes(pageId)
@@ -411,6 +529,17 @@ export default function ConnectPage() {
       onConnect: connectFacebook,
       onDisconnect: disconnectFacebook,
     },
+    {
+      name: "Threads",
+      Icon: FaThreads,
+      isThreads: true,
+      connected: Boolean(thToken),
+      account: thProfile?.username
+        ? `@${thProfile.username}`
+        : "Threads Account",
+      onConnect: connectThreads,
+      onDisconnect: disconnectThreads,
+    },
     { name: "X", Icon: FaXTwitter, connected: false },
     { name: "TikTok", Icon: FaTiktok, connected: false },
   ];
@@ -453,6 +582,14 @@ export default function ConnectPage() {
           glow: "from-pink-500/20",
           tile: "border-pink-400/20 bg-pink-400/10",
           dot: "bg-pink-400",
+        };
+      case "Threads":
+        return {
+          text: "text-slate-100",
+          ring: "ring-white/20",
+          glow: "from-white/15",
+          tile: "border-white/20 bg-white/10",
+          dot: "bg-slate-100",
         };
       default:
         return {
@@ -806,6 +943,91 @@ export default function ConnectPage() {
                       reconnect.
                     </p>
                   )}
+                </div>
+              )}
+
+              {platform.isThreads && !platform.connected && (
+                <div className="relative mt-5 border-t border-white/10 pt-5">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Or paste a token manually
+                  </p>
+                  <p className="mb-3 text-xs text-slate-500">
+                    Generate one in Meta&apos;s Threads token generator
+                    (developers.facebook.com → your app → Threads API → Generate
+                    access token), then paste it here.
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Paste Threads access token…"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveThreadsToken(e.target.value);
+                      }}
+                      id="threads-token-input"
+                      className="field w-full text-sm"
+                    />
+                    <button
+                      onClick={() => {
+                        const el = document.getElementById(
+                          "threads-token-input"
+                        );
+                        if (el) saveThreadsToken(el.value);
+                      }}
+                      className="btn btn-primary shrink-0"
+                    >
+                      Save
+                    </button>
+                  </div>
+                  {thError && (
+                    <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-200">
+                      {thError}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {platform.isThreads && platform.connected && (
+                <div className="relative mt-5 border-t border-white/10 pt-5">
+                  {thLoading && !thProfile ? (
+                    <p className="text-sm text-slate-500">
+                      Loading Threads profile…
+                    </p>
+                  ) : thError ? (
+                    <p className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-200">
+                      {thError} — try reconnecting.
+                    </p>
+                  ) : thProfile ? (
+                    <div className="flex items-center gap-4">
+                      {thProfile.picture ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={thProfile.picture}
+                          alt={thProfile.username || thProfile.name}
+                          className="app-img h-12 w-12 rounded-full object-cover ring-2 ring-white/10"
+                        />
+                      ) : (
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/5 text-lg font-semibold text-slate-300">
+                          {(thProfile.username || thProfile.name)?.[0] ?? "?"}
+                        </div>
+                      )}
+
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-white">
+                          {thProfile.username
+                            ? `@${thProfile.username}`
+                            : thProfile.name}
+                        </p>
+                        {thProfile.name && thProfile.username && (
+                          <p className="truncate text-sm text-slate-400">
+                            {thProfile.name}
+                          </p>
+                        )}
+                        <p className="truncate text-xs text-slate-500">
+                          ID: {thProfile.id}
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>

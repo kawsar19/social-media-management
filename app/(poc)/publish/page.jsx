@@ -2,18 +2,21 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { FaLinkedin, FaFacebook, FaYoutube } from "react-icons/fa6";
+import { FaLinkedin, FaFacebook, FaYoutube, FaThreads } from "react-icons/fa6";
 import { FiImage, FiVideo, FiCheck, FiX, FiLoader, FiClock } from "react-icons/fi";
 import { filterEnabledPages } from "../lib/enabledPages";
 
 const LINKEDIN_KEY = "linkedin_access_token";
 const FB_KEY = "facebook_user_access_token";
 const YT_KEY = "youtube_access_token";
+const TH_KEY = "threads_access_token";
+const TH_USER_ID_KEY = "threads_user_id";
 
-// The three target platforms, in the order they publish (sequential).
+// The target platforms, in the order they publish (sequential).
 const PLATFORMS = [
   { id: "linkedin", label: "LinkedIn", Icon: FaLinkedin, accent: "text-sky-400" },
   { id: "facebook", label: "Facebook", Icon: FaFacebook, accent: "text-indigo-400" },
+  { id: "threads", label: "Threads", Icon: FaThreads, accent: "text-slate-100" },
   { id: "youtube", label: "YouTube", Icon: FaYoutube, accent: "text-rose-400" },
 ];
 
@@ -29,10 +32,22 @@ const STATUS = {
 
 export default function PublishPage() {
   // Connection tokens (read from localStorage, same keys as the Post page).
-  const [tokens, setTokens] = useState({ linkedin: null, facebook: null, youtube: null });
+  const [tokens, setTokens] = useState({
+    linkedin: null,
+    facebook: null,
+    youtube: null,
+    threads: null,
+  });
+  // Threads needs its user id (not just a token) to publish as the account.
+  const [thUserId, setThUserId] = useState(null);
 
   // Which platforms the user wants to publish to.
-  const [selected, setSelected] = useState({ linkedin: true, facebook: true, youtube: true });
+  const [selected, setSelected] = useState({
+    linkedin: true,
+    facebook: true,
+    youtube: true,
+    threads: true,
+  });
 
   // Shared post content.
   const [text, setText] = useState("");
@@ -58,7 +73,9 @@ export default function PublishPage() {
       linkedin: localStorage.getItem(LINKEDIN_KEY),
       facebook: localStorage.getItem(FB_KEY),
       youtube: localStorage.getItem(YT_KEY),
+      threads: localStorage.getItem(TH_KEY),
     });
+    setThUserId(localStorage.getItem(TH_USER_ID_KEY));
   }, []);
 
   // Load Facebook Pages when connected + selected.
@@ -122,15 +139,22 @@ export default function PublishPage() {
     linkedin: Boolean(tokens.linkedin),
     facebook: Boolean(tokens.facebook),
     youtube: Boolean(tokens.youtube),
+    // User id is optional — the share route falls back to `/me`.
+    threads: Boolean(tokens.threads),
   };
 
   const hasVideo = Boolean(video);
+  const hasText = text.trim().length > 0;
 
-  // Which targets will actually run: selected + connected. YouTube only runs
-  // when a video is present (it has no text-only mode) — otherwise it's skipped.
+  // Which targets will actually run: selected + connected.
+  //  - YouTube only runs when a video is present (no text-only mode).
+  //  - Threads runs on the text only here: this page uploads media as files,
+  //    but Threads fetches media from a public URL, so an uploaded image/video
+  //    can't be forwarded. With no text, there's nothing to post -> skipped.
   function plannedStatus(id) {
     if (!selected[id] || !connected[id]) return null; // not in the run at all
     if (id === "youtube" && !hasVideo) return STATUS.skipped;
+    if (id === "threads" && !hasText) return STATUS.skipped;
     return STATUS.pending;
   }
 
@@ -207,7 +231,29 @@ export default function PublishPage() {
     return { ok: true, message: `Uploaded (${data.id}) — ${data.privacyStatus}` };
   }
 
-  const RUNNERS = { linkedin: runLinkedIn, facebook: runFacebook, youtube: runYouTube };
+  async function runThreads() {
+    // Text-only post — this page's image/video are uploaded files, which
+    // Threads can't fetch (it needs a public URL). plannedStatus() already
+    // skips Threads when there's no text.
+    const res = await fetch("/api/auth/threads/share", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${tokens.threads}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ userId: thUserId, text }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, message: data.error || "Failed to publish" };
+    return { ok: true, message: data.id ? `Published (${data.id})` : "Published" };
+  }
+
+  const RUNNERS = {
+    linkedin: runLinkedIn,
+    facebook: runFacebook,
+    threads: runThreads,
+    youtube: runYouTube,
+  };
 
   async function publishAll() {
     setPublishing(true);
@@ -216,7 +262,14 @@ export default function PublishPage() {
     const initial = {};
     for (const p of PLATFORMS) {
       const st = plannedStatus(p.id);
-      if (st) initial[p.id] = { status: st, message: st === STATUS.skipped ? "No video — skipped" : "Waiting…" };
+      if (st) {
+        const skipMsg =
+          p.id === "threads" ? "No text — skipped" : "No video — skipped";
+        initial[p.id] = {
+          status: st,
+          message: st === STATUS.skipped ? skipMsg : "Waiting…",
+        };
+      }
     }
     setRuns(initial);
 
@@ -248,7 +301,11 @@ export default function PublishPage() {
     setYtTitle("");
   }
 
-  const anyConnected = connected.linkedin || connected.facebook || connected.youtube;
+  const anyConnected =
+    connected.linkedin ||
+    connected.facebook ||
+    connected.youtube ||
+    connected.threads;
   const allDone =
     runs && Object.values(runs).every((r) => r.status !== STATUS.running && r.status !== STATUS.pending);
 
@@ -278,7 +335,7 @@ export default function PublishPage() {
         <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
           Publish to
         </p>
-        <div className="mb-6 grid gap-2 sm:grid-cols-3">
+        <div className="mb-6 grid gap-2 sm:grid-cols-2">
           {PLATFORMS.map(({ id, label, Icon, accent }) => {
             const isConnected = connected[id];
             const isOn = selected[id] && isConnected;
@@ -434,6 +491,13 @@ export default function PublishPage() {
             YouTube needs a video — it will be skipped for this text/image post.
           </p>
         ) : null}
+        {selected.threads && connected.threads && (
+          <p className="mt-1.5 text-xs text-slate-500">
+            Threads posts the text only here (uploaded media can&apos;t be
+            forwarded) — it&apos;s skipped for a media-only post. Use the Post
+            page with a public media URL to post an image or video to Threads.
+          </p>
+        )}
 
         {/* Action row */}
         <div className="mt-5 flex items-center justify-between border-t border-white/10 pt-5">

@@ -2,13 +2,21 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { FaLinkedin, FaFacebook, FaYoutube, FaInstagram } from "react-icons/fa6";
+import {
+  FaLinkedin,
+  FaFacebook,
+  FaYoutube,
+  FaInstagram,
+  FaThreads,
+} from "react-icons/fa6";
 import { FiImage, FiVideo, FiLink } from "react-icons/fi";
 import { filterEnabledPages } from "../lib/enabledPages";
 
 const LINKEDIN_KEY = "linkedin_access_token";
 const FB_KEY = "facebook_user_access_token";
 const YT_KEY = "youtube_access_token";
+const TH_KEY = "threads_access_token";
+const TH_USER_ID_KEY = "threads_user_id";
 
 export default function PostPage() {
   const [platform, setPlatform] = useState("linkedin"); // "linkedin" | "facebook" | "instagram" | "youtube"
@@ -16,6 +24,14 @@ export default function PostPage() {
   const [liToken, setLiToken] = useState(null);
   const [fbToken, setFbToken] = useState(null);
   const [ytToken, setYtToken] = useState(null);
+  const [thToken, setThToken] = useState(null);
+  const [thUserId, setThUserId] = useState(null);
+
+  // Threads: like Instagram, media is provided as a public URL (the API fetches
+  // it), but text-only posts are also valid. The Threads user id is saved at
+  // connect time and needed to publish as this account.
+  const [thImageUrl, setThImageUrl] = useState("");
+  const [thVideoUrl, setThVideoUrl] = useState("");
 
   // Instagram rides on the Facebook token (no standalone login). Pick which
   // linked IG Business account to publish to, and provide the media as a public
@@ -57,6 +73,9 @@ export default function PostPage() {
   // Instagram is "connected" once Facebook is (it rides on that token) AND at
   // least one linked IG Business account was found.
   const igConnected = Boolean(fbToken) && igAccounts.length > 0;
+  // Threads is connected once we have its token. The user id is optional — the
+  // share route falls back to `/me` (the token identifies the account).
+  const thConnected = Boolean(thToken);
   const connected =
     platform === "linkedin"
       ? liConnected
@@ -64,12 +83,16 @@ export default function PostPage() {
       ? fbConnected
       : platform === "instagram"
       ? igConnected
+      : platform === "threads"
+      ? thConnected
       : ytConnected;
 
   useEffect(() => {
     setLiToken(localStorage.getItem(LINKEDIN_KEY));
     setFbToken(localStorage.getItem(FB_KEY));
     setYtToken(localStorage.getItem(YT_KEY));
+    setThToken(localStorage.getItem(TH_KEY));
+    setThUserId(localStorage.getItem(TH_USER_ID_KEY));
   }, []);
 
   // When Facebook is selected and connected, load the Pages to choose from.
@@ -264,6 +287,38 @@ export default function PostPage() {
     }
   }
 
+  async function publishThreads() {
+    // Threads fetches media from a public URL (like Instagram), but text-only
+    // posts are valid too. A video URL takes precedence over an image URL.
+    const payload = {
+      userId: thUserId,
+      text,
+    };
+    if (thVideoUrl.trim()) payload.videoUrl = thVideoUrl.trim();
+    else if (thImageUrl.trim()) payload.imageUrl = thImageUrl.trim();
+
+    const res = await fetch("/api/auth/threads/share", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${thToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setResult({ ok: false, message: data.error || "Failed to publish" });
+    } else {
+      setResult({
+        ok: true,
+        message: data.id ? `Published to Threads! (${data.id})` : "Published!",
+      });
+      setText("");
+      setThImageUrl("");
+      setThVideoUrl("");
+    }
+  }
+
   function publishYouTube() {
     // XMLHttpRequest (not fetch) because only XHR exposes upload progress
     // events. This tracks browser -> our server; once that hits 100% the server
@@ -335,6 +390,8 @@ export default function PostPage() {
         await publishFacebook();
       } else if (platform === "instagram") {
         await publishInstagram();
+      } else if (platform === "threads") {
+        await publishThreads();
       } else {
         await publishYouTube();
       }
@@ -351,6 +408,7 @@ export default function PostPage() {
 
   const isYouTube = platform === "youtube";
   const isInstagram = platform === "instagram";
+  const isThreads = platform === "threads";
   // YouTube needs a video file + title; the other platforms need post text —
   // except Facebook, where a video alone (no text) is a valid post.
   const youtubeReady = Boolean(video) && ytTitle.trim().length > 0;
@@ -359,6 +417,11 @@ export default function PostPage() {
   const instagramReady =
     Boolean(selectedIgId) &&
     (igImageUrl.trim().length > 0 || igVideoUrl.trim().length > 0);
+  // Threads accepts text-only OR media (a public URL) — one of them is enough.
+  const threadsReady =
+    text.trim().length > 0 ||
+    thImageUrl.trim().length > 0 ||
+    thVideoUrl.trim().length > 0;
   const hasPostBody =
     text.trim().length > 0 ||
     (platform === "facebook" && Boolean(fbVideo)) ||
@@ -380,6 +443,8 @@ export default function PostPage() {
       ? youtubeReady
       : isInstagram
       ? instagramReady
+      : isThreads
+      ? threadsReady
       : hasPostBody && !fbNoPageSelected);
 
   const platformLabel =
@@ -389,6 +454,8 @@ export default function PostPage() {
       ? "Facebook"
       : platform === "instagram"
       ? "Instagram"
+      : platform === "threads"
+      ? "Threads"
       : "YouTube";
 
   const accentText =
@@ -398,6 +465,8 @@ export default function PostPage() {
       ? "text-indigo-400"
       : platform === "instagram"
       ? "text-pink-400"
+      : platform === "threads"
+      ? "text-slate-100"
       : "text-rose-400";
 
   return (
@@ -453,6 +522,19 @@ export default function PostPage() {
           </span>
         </button>
         <button
+          onClick={() => setPlatform("threads")}
+          className={
+            "rounded-full px-5 py-2 text-sm font-semibold transition-colors " +
+            (platform === "threads"
+              ? "bg-white text-slate-900 shadow-sm"
+              : "text-slate-400 hover:text-slate-200")
+          }
+        >
+          <span className="inline-flex items-center gap-2">
+            <FaThreads className="h-4 w-4" /> Threads
+          </span>
+        </button>
+        <button
           onClick={() => setPlatform("youtube")}
           className={
             "rounded-full px-5 py-2 text-sm font-semibold transition-colors " +
@@ -487,6 +569,8 @@ export default function PostPage() {
               <FaFacebook className="h-5 w-5" />
             ) : platform === "instagram" ? (
               <FaInstagram className="h-5 w-5" />
+            ) : platform === "threads" ? (
+              <FaThreads className="h-5 w-5" />
             ) : (
               <FaYoutube className="h-5 w-5" />
             )}
@@ -622,8 +706,60 @@ export default function PostPage() {
           </div>
         )}
 
+        {/* Threads: caption + optional public media URL. Text-only is valid. */}
+        {isThreads && (
+          <div className="space-y-4">
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={5}
+              placeholder="What's new? (up to 500 characters)"
+              maxLength={500}
+              className="field w-full resize-none"
+            />
+
+            {/* Threads fetches media from a public URL — it can't accept an
+                uploaded file directly. A video URL takes precedence over an
+                image URL (a post carries one or the other). */}
+            <div>
+              <label className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-300">
+                <FiImage className="h-3.5 w-3.5" /> Image URL (optional)
+              </label>
+              <input
+                type="url"
+                value={thImageUrl}
+                onChange={(e) => setThImageUrl(e.target.value)}
+                placeholder="https://example.com/photo.jpg"
+                disabled={Boolean(thVideoUrl.trim())}
+                className="field w-full text-sm disabled:opacity-40"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-300">
+                <FiVideo className="h-3.5 w-3.5" /> Video URL (optional)
+              </label>
+              <input
+                type="url"
+                value={thVideoUrl}
+                onChange={(e) => setThVideoUrl(e.target.value)}
+                placeholder="https://example.com/clip.mp4"
+                disabled={Boolean(thImageUrl.trim())}
+                className="field w-full text-sm disabled:opacity-40"
+              />
+            </div>
+
+            <p className="pretty inline-flex items-start gap-2 rounded-xl border border-white/15 bg-white/5 p-3 text-xs text-slate-400">
+              <FiLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-300" />
+              A post can be text-only, or include one public <strong>https</strong>{" "}
+              image/video URL — Threads downloads media from its own servers, so a
+              local file or localhost URL won&apos;t work.
+            </p>
+          </div>
+        )}
+
         {/* LinkedIn / Facebook: text + optional image */}
-        {!isYouTube && !isInstagram && (
+        {!isYouTube && !isInstagram && !isThreads && (
           <>
             <textarea
               value={text}
