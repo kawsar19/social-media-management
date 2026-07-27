@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useState } from "react";
 
 const AuthContext = createContext(null);
 
@@ -28,14 +28,9 @@ function writeStoredAuth(auth) {
 
 export function AuthProvider({ children }) {
   const [auth, setAuth] = useState(() => readStoredAuth());
-  const [loading, setLoading] = useState(true);
 
   const user = auth?.user ?? null;
   const token = auth?.token ?? null;
-
-  useEffect(() => {
-    setLoading(false);
-  }, []);
 
   async function login(email, password) {
     const res = await fetch("/api/auth/login", {
@@ -75,7 +70,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, token, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );
