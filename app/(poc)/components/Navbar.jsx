@@ -3,13 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { FiEdit3, FiFolder, FiBarChart2, FiTrendingUp, FiLink, FiZap, FiMenu, FiX, FiLogOut, FiUser } from "react-icons/fi";
+import { FiEdit3, FiSend, FiFolder, FiBarChart2, FiTrendingUp, FiLink, FiZap, FiMenu, FiX, FiLogOut, FiUser } from "react-icons/fi";
 import { FaYoutube } from "react-icons/fa6";
 import ThemeToggle from "./ThemeToggle";
 import { useAuth } from "./AuthProvider";
 
 const links = [
   { href: "/post", label: "Post", Icon: FiEdit3 },
+  { href: "/publish", label: "Publish All", Icon: FiSend },
   { href: "/manage", label: "Manage", Icon: FiFolder },
   { href: "/insights", label: "Insights", Icon: FiBarChart2 },
   { href: "/youtube", label: "YouTube", Icon: FaYoutube },
