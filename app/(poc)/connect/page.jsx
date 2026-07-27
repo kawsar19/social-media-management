@@ -439,7 +439,7 @@ export default function ConnectPage() {
       </header>
 
       {errorMsg && (
-        <div className="mb-6 rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-200">
+        <div className="mb-6 rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-700">
           Connection failed: {errorMsg}
         </div>
       )}
