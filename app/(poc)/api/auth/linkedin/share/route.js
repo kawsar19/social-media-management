@@ -2,16 +2,114 @@ import { NextResponse } from "next/server";
 
 const LINKEDIN_VERSION = "202604";
 
-// Publishes a post (text, optionally with one image) to LinkedIn.
+// Video uploads can take a while; hint deployment platforms to allow more time.
+export const maxDuration = 300;
+
+async function fetchWithTimeout(input, init = {}, timeoutMs = 120000) {
+  return fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+}
+
+// Uploads a video to LinkedIn using the multipart Videos API and returns its URN.
+//   1. /rest/videos?action=initializeUpload
+//        -> { value.video (URN), value.uploadInstructions[{ uploadUrl, firstByte, lastByte }] }
+//   2. for each instruction: PUT the byte range [firstByte, lastByte]; keep the
+//        response's ETag header (LinkedIn calls these "uploadedPartIds").
+//   3. /rest/videos?action=finalizeUpload  -> commits the parts to the video URN.
+// Returns { ok: true, urn } or { ok: false, error }.
+async function uploadLinkedInVideo({ auth, owner, video }) {
+  const bytes = await video.arrayBuffer();
+  const fileSizeBytes = bytes.byteLength;
+
+  // Step 1: initialize — declare owner + size, get per-chunk upload URLs.
+  const initRes = await fetchWithTimeout(
+    "https://api.linkedin.com/rest/videos?action=initializeUpload",
+    {
+      method: "POST",
+      headers: {
+        Authorization: auth,
+        "Content-Type": "application/json",
+        "LinkedIn-Version": LINKEDIN_VERSION,
+        "X-Restli-Protocol-Version": "2.0.0",
+      },
+      body: JSON.stringify({
+        initializeUploadRequest: {
+          owner,
+          fileSizeBytes,
+          uploadCaptions: false,
+          uploadThumbnail: false,
+        },
+      }),
+    }
+  );
+  const initData = await initRes.json().catch(() => ({}));
+  const value = initData.value;
+  if (!initRes.ok || !value?.video || !Array.isArray(value.uploadInstructions)) {
+    return { ok: false, error: initData.message || "video_init_failed" };
+  }
+
+  // Step 2: PUT each byte range and collect the ETags in order.
+  const uploadedPartIds = [];
+  for (const instr of value.uploadInstructions) {
+    const chunk = bytes.slice(instr.firstByte, instr.lastByte + 1);
+    const putRes = await fetchWithTimeout(instr.uploadUrl, {
+      method: "PUT",
+      headers: {
+        Authorization: auth,
+        "Content-Type": "application/octet-stream",
+      },
+      body: chunk,
+    });
+    if (!putRes.ok) {
+      const errBody = await putRes.text().catch(() => "");
+      return { ok: false, error: errBody || "video_chunk_upload_failed" };
+    }
+    const etag = putRes.headers.get("etag");
+    if (!etag) {
+      return { ok: false, error: "video_missing_etag" };
+    }
+    uploadedPartIds.push(etag);
+  }
+
+  // Step 3: finalize — commit the uploaded parts to the video URN.
+  const finalizeRes = await fetchWithTimeout(
+    "https://api.linkedin.com/rest/videos?action=finalizeUpload",
+    {
+      method: "POST",
+      headers: {
+        Authorization: auth,
+        "Content-Type": "application/json",
+        "LinkedIn-Version": LINKEDIN_VERSION,
+        "X-Restli-Protocol-Version": "2.0.0",
+      },
+      body: JSON.stringify({
+        finalizeUploadRequest: {
+          video: value.video,
+          uploadToken: "",
+          uploadedPartIds,
+        },
+      }),
+    }
+  );
+  if (!finalizeRes.ok) {
+    const errBody = await finalizeRes.text().catch(() => "");
+    return { ok: false, error: errBody || "video_finalize_failed" };
+  }
+
+  return { ok: true, urn: value.video };
+}
+
+// Publishes a post (text, optionally with one image OR one video) to LinkedIn.
 // Client sends `Authorization: Bearer <token>` and multipart/form-data with
-// fields: text (string) and image (File, optional).
+// fields: text (string), image (File, optional), video (File, optional).
+// A video takes precedence over an image when both are present.
 //
 // Flow:
 //   1. /v2/userinfo               -> member id (sub)
-//   2. if image:
+//   2. if video: multipart upload via uploadLinkedInVideo() -> video URN
+//      else if image:
 //        a. /rest/images?action=initializeUpload -> { uploadUrl, image URN }
 //        b. PUT uploadUrl (raw bytes)
-//   3. /rest/posts                -> create the post (with content.media if image)
+//   3. /rest/posts                -> create the post (with content.media if media)
 export async function POST(request) {
   const auth = request.headers.get("authorization");
   if (!auth?.startsWith("Bearer ")) {
@@ -21,8 +119,13 @@ export async function POST(request) {
   const form = await request.formData().catch(() => null);
   const text = form?.get("text")?.toString() ?? "";
   const image = form?.get("image"); // File or null
+  const video = form?.get("video"); // File or null
 
-  if (!text.trim()) {
+  const hasVideo =
+    video && typeof video.arrayBuffer === "function" && video.size > 0;
+
+  // Text is required for a plain/image post, but a video alone is a valid post.
+  if (!text.trim() && !hasVideo) {
     return NextResponse.json({ error: "empty_text" }, { status: 400 });
   }
 
@@ -39,9 +142,16 @@ export async function POST(request) {
   }
   const owner = `urn:li:person:${me.sub}`;
 
-  // 2. If an image was provided, upload it and get its URN.
+  // 2. Upload media (if any). A video takes precedence over an image.
   let imageUrn = null;
-  if (image && typeof image.arrayBuffer === "function" && image.size > 0) {
+  let videoUrn = null;
+  if (hasVideo) {
+    const out = await uploadLinkedInVideo({ auth, owner, video });
+    if (!out.ok) {
+      return NextResponse.json({ error: out.error }, { status: 502 });
+    }
+    videoUrn = out.urn;
+  } else if (image && typeof image.arrayBuffer === "function" && image.size > 0) {
     const initRes = await fetch(
       "https://api.linkedin.com/rest/images?action=initializeUpload",
       {
@@ -92,7 +202,9 @@ export async function POST(request) {
     },
     lifecycleState: "PUBLISHED",
   };
-  if (imageUrn) {
+  if (videoUrn) {
+    body.content = { media: { id: videoUrn, title: text.slice(0, 100) || "Video" } };
+  } else if (imageUrn) {
     body.content = { media: { id: imageUrn, altText: text.slice(0, 100) } };
   }
 
