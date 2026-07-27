@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  FaLinkedin,
+  FaFacebook,
+  FaYoutube,
+  FaInstagram,
+  FaXTwitter,
+  FaTiktok,
+} from "react-icons/fa6";
+import { FiCheck } from "react-icons/fi";
 import { getEnabledPageIds, setEnabledPageIds } from "../lib/enabledPages";
 
 const LINKEDIN_CLIENT_ID = "869sxzia2ogeui";
@@ -312,7 +321,7 @@ export default function ConnectPage() {
   const platforms = [
     {
       name: "LinkedIn",
-      icon: "💼",
+      Icon: FaLinkedin,
       isLinkedIn: true,
       connected: Boolean(token),
       account: profile?.name || "LinkedIn Account",
@@ -321,7 +330,7 @@ export default function ConnectPage() {
     },
     {
       name: "Facebook",
-      icon: "📘",
+      Icon: FaFacebook,
       isFacebook: true,
       connected: Boolean(fbToken),
       account:
@@ -333,16 +342,16 @@ export default function ConnectPage() {
     },
     {
       name: "YouTube",
-      icon: "▶️",
+      Icon: FaYoutube,
       isYouTube: true,
       connected: Boolean(ytToken),
       account: ytChannel?.title || "YouTube Channel",
       onConnect: connectYouTube,
       onDisconnect: disconnectYouTube,
     },
-    { name: "Instagram", icon: "📷", connected: false },
-    { name: "X", icon: "✖️", connected: false },
-    { name: "TikTok", icon: "🎵", connected: false },
+    { name: "Instagram", Icon: FaInstagram, connected: false },
+    { name: "X", Icon: FaXTwitter, connected: false },
+    { name: "TikTok", Icon: FaTiktok, connected: false },
   ];
 
   const connectedCount = platforms.filter((p) => p.connected).length;
@@ -438,6 +447,7 @@ export default function ConnectPage() {
       <div className="stagger grid gap-5 md:grid-cols-2">
         {platforms.map((platform, index) => {
           const accent = accentFor(platform.name);
+          const { Icon } = platform;
           return (
             <div
               key={platform.name}
@@ -457,7 +467,7 @@ export default function ConnectPage() {
                   <div
                     className={`flex h-14 w-14 items-center justify-center rounded-xl border text-3xl ${accent.tile}`}
                   >
-                    {platform.icon}
+                    <Icon className="h-6 w-6" />
                   </div>
 
                   <div className="min-w-0">
@@ -526,9 +536,13 @@ export default function ConnectPage() {
                           {profile.name}
                         </p>
                         {profile.email && (
-                          <p className="truncate text-sm text-slate-400">
+                          <p className="inline-flex items-center gap-1 truncate text-sm text-slate-400">
                             {profile.email}
-                            {profile.email_verified ? " ✓" : ""}
+                            {profile.email_verified ? (
+                              <FiCheck className="h-4 w-4" />
+                            ) : (
+                              ""
+                            )}
                           </p>
                         )}
                         <p className="truncate text-xs text-slate-500">
@@ -663,7 +677,7 @@ export default function ConnectPage() {
         })}
       </div>
 
-      {token && (
+      {/* {token && (
         <div className="glass mt-6 rounded-2xl border-emerald-400/30 bg-emerald-400/10 p-6">
           <h3 className="mb-2 font-semibold text-emerald-300">
             LinkedIn Access Token (saved to localStorage)
@@ -672,7 +686,7 @@ export default function ConnectPage() {
             {token}
           </p>
         </div>
-      )}
+      )} */}
 
       <div className="glass mt-6 rounded-2xl p-6">
         <div className="flex items-end justify-between gap-4">

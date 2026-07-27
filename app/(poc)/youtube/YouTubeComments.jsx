@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { FiMessageCircle, FiThumbsUp } from "react-icons/fi";
 
 // Comments panel for a single YouTube video: lists top-level comment threads
 // with their replies, and lets the user reply to a thread. Lazily loads on
@@ -78,7 +79,7 @@ export default function YouTubeComments({ ytToken, videoId }) {
         onClick={toggle}
         className="text-sm font-medium text-slate-400 transition-colors hover:text-rose-300"
       >
-        💬 {open ? "Hide comments" : "Comments"}
+        <FiMessageCircle className="h-4 w-4" /> {open ? "Hide comments" : "Comments"}
       </button>
 
       {open && (
@@ -121,8 +122,8 @@ export default function YouTubeComments({ ytToken, videoId }) {
                         // YouTube returns textDisplay as HTML (links, <br>, etc.).
                         dangerouslySetInnerHTML={{ __html: c.text || "" }}
                       />
-                      <p className="mt-1 text-xs text-slate-500">
-                        👍 <span className="tabular">{c.likeCount ?? 0}</span>
+                      <p className="mt-1 inline-flex items-center gap-1 text-xs text-slate-500">
+                        <FiThumbsUp className="h-3.5 w-3.5" /> <span className="tabular">{c.likeCount ?? 0}</span>
                       </p>
                     </div>
                   </div>

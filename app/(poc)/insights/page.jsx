@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { FiBarChart2 } from "react-icons/fi";
 import { filterEnabledPages } from "../lib/enabledPages";
 
 const FB_KEY = "facebook_user_access_token";
@@ -104,18 +105,7 @@ export default function InsightsPage() {
     <div className="rise-in mx-auto max-w-5xl px-6 py-10">
       <div className="mb-8 flex items-center gap-4">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-indigo-400/20 bg-indigo-400/10 text-indigo-300">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-6 w-6"
-          >
-            <path d="M3 3v18h18" />
-            <path d="M7 14l3-4 3 3 4-6" />
-          </svg>
+          <FiBarChart2 className="h-6 w-6" />
         </div>
         <div>
           <h1 className="balance text-3xl font-bold text-white">

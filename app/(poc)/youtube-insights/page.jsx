@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { FiRefreshCw, FiArrowRight } from "react-icons/fi";
+import { FaYoutube } from "react-icons/fa6";
 
 const YT_KEY = "youtube_access_token";
 const DAYS = 28;
@@ -72,8 +74,8 @@ export default function YouTubeInsightsPage() {
     <div className="rise-in mx-auto max-w-5xl px-6 py-10">
       <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-4">
-          <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-500 to-orange-400 text-2xl shadow-lg shadow-rose-500/20">
-            ▶
+          <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-500 to-orange-400 text-white shadow-lg shadow-rose-500/20">
+            <FaYoutube className="h-6 w-6" />
           </span>
           <div>
             <h1 className="balance text-3xl font-bold text-white">
@@ -81,7 +83,16 @@ export default function YouTubeInsightsPage() {
             </h1>
             <p className="pretty mt-2 text-slate-400">
               Channel performance over the last {DAYS} days
-              {range ? ` (${range.startDate} → ${range.endDate})` : ""}.
+              {range ? (
+                <>
+                  {" "}
+                  ({range.startDate}{" "}
+                  <FiArrowRight className="inline h-3.5 w-3.5" /> {range.endDate})
+                </>
+              ) : (
+                ""
+              )}
+              .
             </p>
           </div>
         </div>
@@ -91,7 +102,7 @@ export default function YouTubeInsightsPage() {
             onClick={() => loadAnalytics(ytToken)}
             className="btn btn-ghost flex-shrink-0"
           >
-            ↻ Refresh
+            <FiRefreshCw className="h-4 w-4" /> Refresh
           </button>
         )}
       </header>

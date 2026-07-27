@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import PostComments from "./PostComments";
 import { filterEnabledPages } from "../lib/enabledPages";
+import { FiRefreshCw } from "react-icons/fi";
 
 const FB_KEY = "facebook_user_access_token";
 
@@ -173,7 +174,7 @@ export default function ManagePage() {
                 onClick={() => loadPosts(selectedPageId)}
                 className="btn btn-ghost"
               >
-                ↻ Refresh
+                <FiRefreshCw className="h-4 w-4" /> Refresh
               </button>
             </div>
           )}

@@ -3,6 +3,13 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import YouTubeComments from "./YouTubeComments";
+import {
+  FiRefreshCw,
+  FiEye,
+  FiThumbsUp,
+  FiMessageCircle,
+  FiArrowUpRight,
+} from "react-icons/fi";
 
 const YT_KEY = "youtube_access_token";
 
@@ -121,7 +128,7 @@ export default function YouTubePage() {
               onClick={() => loadChannel(ytToken)}
               className="btn btn-ghost relative"
             >
-              ↻ Refresh
+              <FiRefreshCw className="h-4 w-4" /> Refresh
             </button>
           </div>
         )}
@@ -168,14 +175,14 @@ export default function YouTubePage() {
                         <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-400 ring-1 ring-white/10">
                           {fmtDate(video.publishedAt)}
                         </span>
-                        <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-400 ring-1 ring-white/10">
-                          👁 <span className="tabular">{fmtNum(video.views)}</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2.5 py-1 text-slate-400 ring-1 ring-white/10">
+                          <FiEye className="h-3.5 w-3.5" /> <span className="tabular">{fmtNum(video.views)}</span>
                         </span>
-                        <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-400 ring-1 ring-white/10">
-                          👍 <span className="tabular">{fmtNum(video.likes)}</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2.5 py-1 text-slate-400 ring-1 ring-white/10">
+                          <FiThumbsUp className="h-3.5 w-3.5" /> <span className="tabular">{fmtNum(video.likes)}</span>
                         </span>
-                        <span className="rounded-full bg-white/5 px-2.5 py-1 text-slate-400 ring-1 ring-white/10">
-                          💬{" "}
+                        <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2.5 py-1 text-slate-400 ring-1 ring-white/10">
+                          <FiMessageCircle className="h-3.5 w-3.5" />{" "}
                           <span className="tabular">{fmtNum(video.comments)}</span>
                         </span>
                         <a
@@ -184,7 +191,7 @@ export default function YouTubePage() {
                           rel="noreferrer"
                           className="font-medium text-rose-400 hover:text-rose-300"
                         >
-                          Watch on YouTube ↗
+                          Watch on YouTube <FiArrowUpRight className="h-3.5 w-3.5" />
                         </a>
                       </div>
                     </div>

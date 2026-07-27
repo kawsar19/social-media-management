@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { FaLinkedin, FaFacebook, FaYoutube } from "react-icons/fa6";
+import { FiImage, FiVideo } from "react-icons/fi";
 import { filterEnabledPages } from "../lib/enabledPages";
 
 const LINKEDIN_KEY = "linkedin_access_token";
@@ -282,7 +284,9 @@ export default function PostPage() {
               : "text-slate-400 hover:text-slate-200")
           }
         >
-          💼 LinkedIn
+          <span className="inline-flex items-center gap-2">
+            <FaLinkedin className="h-4 w-4" /> LinkedIn
+          </span>
         </button>
         <button
           onClick={() => setPlatform("facebook")}
@@ -293,7 +297,9 @@ export default function PostPage() {
               : "text-slate-400 hover:text-slate-200")
           }
         >
-          📘 Facebook
+          <span className="inline-flex items-center gap-2">
+            <FaFacebook className="h-4 w-4" /> Facebook
+          </span>
         </button>
         <button
           onClick={() => setPlatform("youtube")}
@@ -304,7 +310,9 @@ export default function PostPage() {
               : "text-slate-400 hover:text-slate-200")
           }
         >
-          ▶️ YouTube
+          <span className="inline-flex items-center gap-2">
+            <FaYoutube className="h-4 w-4" /> YouTube
+          </span>
         </button>
       </div>
 
@@ -322,7 +330,13 @@ export default function PostPage() {
       <div className="glass rounded-2xl p-6">
         <div className="mb-5 flex items-center gap-3 border-b border-white/10 pb-5">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-xl">
-            {platform === "linkedin" ? "💼" : platform === "facebook" ? "📘" : "▶️"}
+            {platform === "linkedin" ? (
+              <FaLinkedin className="h-5 w-5" />
+            ) : platform === "facebook" ? (
+              <FaFacebook className="h-5 w-5" />
+            ) : (
+              <FaYoutube className="h-5 w-5" />
+            )}
           </div>
           <div>
             <p className={"font-semibold " + accentText}>{platformLabel}</p>
@@ -407,7 +421,7 @@ export default function PostPage() {
                 </div>
               ) : (
                 <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:border-white/20 hover:bg-white/10">
-                  🖼️ Add image
+                  <FiImage className="h-4 w-4" /> Add image
                   <input
                     type="file"
                     accept="image/*"
@@ -427,8 +441,8 @@ export default function PostPage() {
               {video ? (
                 <div className="flex items-center justify-between rounded-xl border border-rose-400/30 bg-rose-400/10 p-4">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-white">
-                      🎬 {video.name}
+                    <p className="inline-flex items-center gap-2 truncate text-sm font-medium text-white">
+                      <FiVideo className="h-4 w-4" /> {video.name}
                     </p>
                     <p className="text-xs text-slate-400">
                       <span className="tabular">
@@ -443,8 +457,8 @@ export default function PostPage() {
                 </div>
               ) : (
                 <label className="group flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-white/15 bg-white/5 p-12 text-center transition-colors hover:border-rose-400/50 hover:bg-rose-400/10">
-                  <span className="text-4xl transition-transform group-hover:scale-110">
-                    🎬
+                  <span className="transition-transform group-hover:scale-110">
+                    <FiVideo className="h-6 w-6" />
                   </span>
                   <span className="text-sm font-semibold text-slate-200">
                     Choose a video file
@@ -494,7 +508,7 @@ export default function PostPage() {
               </select>
             </div>
 
-            <p className="pretty rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">
+            <p className="pretty rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-700">
               Note: if this Google app is not yet verified, uploaded videos are
               forced to <strong>private-locked</strong> by YouTube regardless of
               the privacy chosen here, until the app passes verification.

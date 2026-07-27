@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FiSun, FiMoon } from "react-icons/fi";
 
 // Light/dark theme switch. The initial data-theme is set pre-paint by the
 // inline script in the root layout; this component just reflects and toggles it,
@@ -37,10 +38,14 @@ export default function ThemeToggle() {
     >
       <span
         aria-hidden
-        className="transition-transform duration-200"
+        className="flex transition-transform duration-200"
         style={{ transform: theme ? "rotate(0deg)" : "rotate(-90deg)" }}
       >
-        {isDark ? "☀️" : "🌙"}
+        {isDark ? (
+          <FiSun className="h-4 w-4" />
+        ) : (
+          <FiMoon className="h-4 w-4" />
+        )}
       </span>
     </button>
   );

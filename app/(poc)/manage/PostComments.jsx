@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { FiMessageCircle } from "react-icons/fi";
 
 // Comments panel for a single Page post: lists comments, lets the user reply,
 // and delete individual comments. Lazily loads on first expand.
@@ -132,7 +133,7 @@ export default function PostComments({ fbToken, pageId, postId }) {
         onClick={toggle}
         className="text-sm font-medium text-slate-400 transition-colors hover:text-white"
       >
-        💬 {open ? "Hide comments" : "Comments"}
+        <FiMessageCircle className="h-4 w-4" /> {open ? "Hide comments" : "Comments"}
       </button>
 
       {open && (
