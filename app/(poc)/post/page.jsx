@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { FaLinkedin, FaFacebook, FaYoutube } from "react-icons/fa6";
-import { FiImage, FiVideo } from "react-icons/fi";
+import { FaLinkedin, FaFacebook, FaYoutube, FaInstagram } from "react-icons/fa6";
+import { FiImage, FiVideo, FiLink } from "react-icons/fi";
 import { filterEnabledPages } from "../lib/enabledPages";
 
 const LINKEDIN_KEY = "linkedin_access_token";
@@ -11,11 +11,20 @@ const FB_KEY = "facebook_user_access_token";
 const YT_KEY = "youtube_access_token";
 
 export default function PostPage() {
-  const [platform, setPlatform] = useState("linkedin"); // "linkedin" | "facebook" | "youtube"
+  const [platform, setPlatform] = useState("linkedin"); // "linkedin" | "facebook" | "instagram" | "youtube"
 
   const [liToken, setLiToken] = useState(null);
   const [fbToken, setFbToken] = useState(null);
   const [ytToken, setYtToken] = useState(null);
+
+  // Instagram rides on the Facebook token (no standalone login). Pick which
+  // linked IG Business account to publish to, and provide the media as a public
+  // URL — Instagram's API fetches media from a URL, it can't accept raw bytes.
+  const [igAccounts, setIgAccounts] = useState([]);
+  const [igLoading, setIgLoading] = useState(false);
+  const [selectedIgId, setSelectedIgId] = useState("");
+  const [igImageUrl, setIgImageUrl] = useState("");
+  const [igVideoUrl, setIgVideoUrl] = useState("");
 
   // YouTube upload form (separate from the text/image post fields above).
   const [video, setVideo] = useState(null); // File
@@ -45,11 +54,16 @@ export default function PostPage() {
   const liConnected = Boolean(liToken);
   const fbConnected = Boolean(fbToken);
   const ytConnected = Boolean(ytToken);
+  // Instagram is "connected" once Facebook is (it rides on that token) AND at
+  // least one linked IG Business account was found.
+  const igConnected = Boolean(fbToken) && igAccounts.length > 0;
   const connected =
     platform === "linkedin"
       ? liConnected
       : platform === "facebook"
       ? fbConnected
+      : platform === "instagram"
+      ? igConnected
       : ytConnected;
 
   useEffect(() => {
@@ -75,6 +89,35 @@ export default function PostPage() {
       .catch(() => {})
       .finally(() => {
         if (!cancelled) setFbPagesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [platform, fbToken]);
+
+  // When Instagram is selected and Facebook is connected, load which Pages have
+  // a linked IG Business account (same token as Pages). Auto-select the first.
+  useEffect(() => {
+    if (platform !== "instagram" || !fbToken) return;
+
+    let cancelled = false;
+    setIgLoading(true);
+    fetch("/api/auth/instagram/accounts", {
+      headers: { Authorization: `Bearer ${fbToken}` },
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (cancelled) return;
+        if (res.ok) {
+          const accounts = data.accounts || [];
+          setIgAccounts(accounts);
+          setSelectedIgId((prev) => prev || accounts[0]?.id || "");
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setIgLoading(false);
       });
 
     return () => {
@@ -189,6 +232,38 @@ export default function PostPage() {
     }
   }
 
+  async function publishInstagram() {
+    // Instagram fetches media from a public URL, so we send a URL (not bytes).
+    // A video takes precedence over an image (a post is one or the other).
+    const payload = {
+      igUserId: selectedIgId,
+      caption: text,
+    };
+    if (igVideoUrl.trim()) payload.videoUrl = igVideoUrl.trim();
+    else if (igImageUrl.trim()) payload.imageUrl = igImageUrl.trim();
+
+    const res = await fetch("/api/auth/instagram/share", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${fbToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setResult({ ok: false, message: data.error || "Failed to publish" });
+    } else {
+      setResult({
+        ok: true,
+        message: data.id ? `Published to Instagram! (${data.id})` : "Published!",
+      });
+      setText("");
+      setIgImageUrl("");
+      setIgVideoUrl("");
+    }
+  }
+
   function publishYouTube() {
     // XMLHttpRequest (not fetch) because only XHR exposes upload progress
     // events. This tracks browser -> our server; once that hits 100% the server
@@ -258,6 +333,8 @@ export default function PostPage() {
         await publishLinkedIn();
       } else if (platform === "facebook") {
         await publishFacebook();
+      } else if (platform === "instagram") {
+        await publishInstagram();
       } else {
         await publishYouTube();
       }
@@ -273,17 +350,23 @@ export default function PostPage() {
     platform === "facebook" && selectedPageIds.length === 0;
 
   const isYouTube = platform === "youtube";
+  const isInstagram = platform === "instagram";
   // YouTube needs a video file + title; the other platforms need post text —
   // except Facebook, where a video alone (no text) is a valid post.
   const youtubeReady = Boolean(video) && ytTitle.trim().length > 0;
+  // Instagram requires media (a public URL) and a chosen account; caption is
+  // optional. Text-only isn't a valid IG post.
+  const instagramReady =
+    Boolean(selectedIgId) &&
+    (igImageUrl.trim().length > 0 || igVideoUrl.trim().length > 0);
   const hasPostBody =
     text.trim().length > 0 ||
     (platform === "facebook" && Boolean(fbVideo)) ||
     (platform === "linkedin" && Boolean(liVideo));
 
-  // Facebook and LinkedIn both support one optional video; YouTube has its own
-  // dedicated form. Resolve the active platform's video + its handlers so the
-  // shared picker below works for either.
+  // Facebook and LinkedIn both support one optional video; YouTube and
+  // Instagram have their own dedicated forms. Resolve the active platform's
+  // video + its handlers so the shared picker below works for either.
   const supportsVideo = platform === "facebook" || platform === "linkedin";
   const activeVideo = platform === "facebook" ? fbVideo : liVideo;
   const onPickActiveVideo =
@@ -293,13 +376,19 @@ export default function PostPage() {
   const canPublish =
     connected &&
     !publishing &&
-    (isYouTube ? youtubeReady : hasPostBody && !fbNoPageSelected);
+    (isYouTube
+      ? youtubeReady
+      : isInstagram
+      ? instagramReady
+      : hasPostBody && !fbNoPageSelected);
 
   const platformLabel =
     platform === "linkedin"
       ? "LinkedIn"
       : platform === "facebook"
       ? "Facebook"
+      : platform === "instagram"
+      ? "Instagram"
       : "YouTube";
 
   const accentText =
@@ -307,6 +396,8 @@ export default function PostPage() {
       ? "text-sky-400"
       : platform === "facebook"
       ? "text-indigo-400"
+      : platform === "instagram"
+      ? "text-pink-400"
       : "text-rose-400";
 
   return (
@@ -349,6 +440,19 @@ export default function PostPage() {
           </span>
         </button>
         <button
+          onClick={() => setPlatform("instagram")}
+          className={
+            "rounded-full px-5 py-2 text-sm font-semibold transition-colors " +
+            (platform === "instagram"
+              ? "bg-white text-slate-900 shadow-sm"
+              : "text-slate-400 hover:text-slate-200")
+          }
+        >
+          <span className="inline-flex items-center gap-2">
+            <FaInstagram className="h-4 w-4" /> Instagram
+          </span>
+        </button>
+        <button
           onClick={() => setPlatform("youtube")}
           className={
             "rounded-full px-5 py-2 text-sm font-semibold transition-colors " +
@@ -381,6 +485,8 @@ export default function PostPage() {
               <FaLinkedin className="h-5 w-5" />
             ) : platform === "facebook" ? (
               <FaFacebook className="h-5 w-5" />
+            ) : platform === "instagram" ? (
+              <FaInstagram className="h-5 w-5" />
             ) : (
               <FaYoutube className="h-5 w-5" />
             )}
@@ -439,8 +545,85 @@ export default function PostPage() {
           </div>
         )}
 
+        {/* Instagram: pick account + caption + public media URL */}
+        {isInstagram && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-pink-400">
+                Post to which account?
+              </p>
+              {igLoading && igAccounts.length === 0 ? (
+                <p className="text-sm text-slate-500">Loading accounts…</p>
+              ) : igAccounts.length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  No Instagram Business account is linked to your Facebook Pages.
+                </p>
+              ) : (
+                <select
+                  value={selectedIgId}
+                  onChange={(e) => setSelectedIgId(e.target.value)}
+                  className="field w-full text-sm"
+                >
+                  {igAccounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.username ? `@${acc.username}` : acc.name || acc.id}
+                      {acc.pageName ? ` — ${acc.pageName}` : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={5}
+              placeholder="Write a caption… (optional)"
+              className="field w-full resize-none"
+            />
+
+            {/* Instagram's API fetches media from a public URL — it can't accept
+                an uploaded file directly, so we take a URL instead. A video URL
+                takes precedence over an image URL (a post is one or the other). */}
+            <div>
+              <label className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-pink-400">
+                <FiImage className="h-3.5 w-3.5" /> Image URL
+              </label>
+              <input
+                type="url"
+                value={igImageUrl}
+                onChange={(e) => setIgImageUrl(e.target.value)}
+                placeholder="https://example.com/photo.jpg"
+                disabled={Boolean(igVideoUrl.trim())}
+                className="field w-full text-sm disabled:opacity-40"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-pink-400">
+                <FiVideo className="h-3.5 w-3.5" /> Video URL (Reel)
+              </label>
+              <input
+                type="url"
+                value={igVideoUrl}
+                onChange={(e) => setIgVideoUrl(e.target.value)}
+                placeholder="https://example.com/reel.mp4"
+                disabled={Boolean(igImageUrl.trim())}
+                className="field w-full text-sm disabled:opacity-40"
+              />
+            </div>
+
+            <p className="pretty inline-flex items-start gap-2 rounded-xl border border-pink-400/20 bg-pink-400/5 p-3 text-xs text-slate-400">
+              <FiLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-pink-400" />
+              The media must be a public <strong>https</strong> URL — Instagram
+              downloads it from its own servers, so a local file or localhost URL
+              won&apos;t work. A video is published as a Reel.
+            </p>
+          </div>
+        )}
+
         {/* LinkedIn / Facebook: text + optional image */}
-        {!isYouTube && (
+        {!isYouTube && !isInstagram && (
           <>
             <textarea
               value={text}
@@ -639,6 +822,12 @@ export default function PostPage() {
                 "Ready to upload"
               ) : (
                 "Select a video to upload"
+              )
+            ) : isInstagram ? (
+              instagramReady ? (
+                "Ready to publish"
+              ) : (
+                "Add a public image or video URL"
               )
             ) : (
               <>

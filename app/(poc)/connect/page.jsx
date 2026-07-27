@@ -36,7 +36,7 @@ function buildLinkedInAuthUrl() {
 const FB_APP_ID = "1363634801765963";
 const FB_REDIRECT_URI = "http://localhost:3001/api/auth/facebook/callback";
 const FB_SCOPE =
-  "public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,business_management";
+  "public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,business_management,instagram_basic,instagram_content_publish";
 const FB_GRAPH_VERSION = "v25.0";
 
 function buildFacebookAuthUrl() {
@@ -104,6 +104,14 @@ export default function ConnectPage() {
   const [ytChannel, setYtChannel] = useState(null);
   const [ytLoading, setYtLoading] = useState(false);
   const [ytError, setYtError] = useState(null);
+
+  // Instagram: has no standalone login. A linked Instagram Business/Creator
+  // account is discovered through the Facebook Page it belongs to, so it rides
+  // on the same fbToken. Whenever fbToken is present we ask
+  // /api/auth/instagram/accounts which Pages have a linked IG account.
+  const [igAccounts, setIgAccounts] = useState([]);
+  const [igLoading, setIgLoading] = useState(false);
+  const [igError, setIgError] = useState(null);
 
   // On mount: read the access token from the URL hash (set by the callback
   // route), save it to localStorage, then clean the URL. Also restore any
@@ -271,6 +279,44 @@ export default function ConnectPage() {
     };
   }, [fbToken]);
 
+  // Instagram rides on the Facebook token: whenever we have one, ask which
+  // Pages have a linked Instagram Business/Creator account. Empty result just
+  // means no IG account is linked (or the instagram_* scopes weren't granted).
+  useEffect(() => {
+    if (!fbToken) {
+      setIgAccounts([]);
+      return;
+    }
+
+    let cancelled = false;
+    setIgLoading(true);
+    setIgError(null);
+
+    fetch("/api/auth/instagram/accounts", {
+      headers: { Authorization: `Bearer ${fbToken}` },
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          setIgError(data.error || "Failed to load Instagram accounts");
+          setIgAccounts([]);
+        } else {
+          setIgAccounts(data.accounts || []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setIgError("Failed to load Instagram accounts");
+      })
+      .finally(() => {
+        if (!cancelled) setIgLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fbToken]);
+
   function connectFacebook() {
     window.location.href = buildFacebookAuthUrl();
   }
@@ -349,7 +395,22 @@ export default function ConnectPage() {
       onConnect: connectYouTube,
       onDisconnect: disconnectYouTube,
     },
-    { name: "Instagram", Icon: FaInstagram, connected: false },
+    {
+      name: "Instagram",
+      Icon: FaInstagram,
+      isInstagram: true,
+      // Instagram is reached through Facebook, so it's "connected" once we've
+      // found at least one linked IG Business account on the Facebook token.
+      connected: igAccounts.length > 0,
+      account:
+        igAccounts.length > 0
+          ? igAccounts.map((a) => `@${a.username}`).join(", ")
+          : "Instagram Account",
+      // Connecting Instagram == connecting Facebook (it grants the instagram_*
+      // scopes). Disconnecting IG means dropping the Facebook token too.
+      onConnect: connectFacebook,
+      onDisconnect: disconnectFacebook,
+    },
     { name: "X", Icon: FaXTwitter, connected: false },
     { name: "TikTok", Icon: FaTiktok, connected: false },
   ];
@@ -384,6 +445,14 @@ export default function ConnectPage() {
           glow: "from-sky-500/20",
           tile: "border-sky-400/20 bg-sky-400/10",
           dot: "bg-sky-400",
+        };
+      case "Instagram":
+        return {
+          text: "text-pink-400",
+          ring: "ring-pink-400/20",
+          glow: "from-pink-500/20",
+          tile: "border-pink-400/20 bg-pink-400/10",
+          dot: "bg-pink-400",
         };
       default:
         return {
@@ -670,6 +739,73 @@ export default function ConnectPage() {
                       </div>
                     </div>
                   ) : null}
+                </div>
+              )}
+
+              {platform.isInstagram && (
+                <div className="relative mt-5 border-t border-white/10 pt-5">
+                  {!fbToken ? (
+                    <p className="text-sm text-slate-500">
+                      Connect Facebook first — Instagram Business accounts are
+                      accessed through their linked Facebook Page.
+                    </p>
+                  ) : igLoading && igAccounts.length === 0 ? (
+                    <p className="text-sm text-slate-500">
+                      Looking for linked Instagram accounts…
+                    </p>
+                  ) : igError ? (
+                    <p className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-200">
+                      {igError}
+                    </p>
+                  ) : igAccounts.length > 0 ? (
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Linked Instagram accounts
+                      </p>
+                      {igAccounts.map((acct) => (
+                        <div
+                          key={acct.id}
+                          className="flex items-center gap-4 rounded-xl border border-white/5 bg-white/[0.03] p-3"
+                        >
+                          {acct.picture ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={acct.picture}
+                              alt={acct.username || acct.name}
+                              className="app-img h-12 w-12 rounded-full object-cover ring-2 ring-pink-400/20"
+                            />
+                          ) : (
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/5 text-lg font-semibold text-slate-300">
+                              {(acct.username || acct.name)?.[0] ?? "?"}
+                            </div>
+                          )}
+
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-white">
+                              {acct.username ? `@${acct.username}` : acct.name}
+                            </p>
+                            <p className="truncate text-sm text-slate-400">
+                              {acct.followers != null
+                                ? `${Number(
+                                    acct.followers
+                                  ).toLocaleString()} followers`
+                                : ""}
+                              {acct.pageName ? ` · via ${acct.pageName}` : ""}
+                            </p>
+                            <p className="truncate text-xs text-slate-500">
+                              ID: {acct.id}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500">
+                      No Instagram Business account is linked to your Facebook
+                      Pages. Link one in your Facebook Page settings, then
+                      reconnect.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
