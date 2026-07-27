@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { FiEdit3, FiSend, FiFolder, FiBarChart2, FiTrendingUp, FiLink, FiZap, FiMenu, FiX, FiLogOut, FiUser, FiChevronDown } from "react-icons/fi";
+import { FiEdit3, FiSend, FiFolder, FiBarChart2, FiTrendingUp, FiLink, FiZap, FiMenu, FiX, FiLogOut, FiUser, FiChevronDown, FiInbox } from "react-icons/fi";
 import { FaYoutube, FaFacebook } from "react-icons/fa6";
 import ThemeToggle from "./ThemeToggle";
 import { useAuth } from "./AuthProvider";
@@ -35,7 +35,10 @@ const menus = [
   },
 ];
 
-const standaloneLinks = [{ href: "/connect", label: "Connect", Icon: FiLink }];
+const standaloneLinks = [
+  { href: "/inbox", label: "Inbox", Icon: FiInbox },
+  { href: "/connect", label: "Connect", Icon: FiLink },
+];
 
 function DesktopMenu({ menu, pathname }) {
   const [open, setOpen] = useState(false);
