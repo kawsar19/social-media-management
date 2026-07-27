@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { FiSun, FiMoon } from "react-icons/fi";
+import { toggleTheme } from "../lib/theme-actions";
 
-// Light/dark theme switch. The initial data-theme is set pre-paint by the
-// inline script in the root layout; this component just reflects and toggles it,
-// persisting the choice to localStorage under "theme".
+// Light/dark theme switch. The theme is persisted server-side in a cookie and
+// rendered onto <html data-theme> by the root layout. This button reflects the
+// current attribute and calls the `toggleTheme` server action to flip it,
+// optimistically updating the DOM for instant feedback.
 export default function ThemeToggle() {
   const [theme, setTheme] = useState(null);
+  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     const current =
@@ -17,13 +20,13 @@ export default function ThemeToggle() {
 
   function toggle() {
     const next = theme === "dark" ? "light" : "dark";
+    // Optimistic update so the UI responds immediately; the server action
+    // persists the cookie and revalidates the layout to match.
     document.documentElement.setAttribute("data-theme", next);
-    try {
-      localStorage.setItem("theme", next);
-    } catch {
-      // ignore write failures (private mode, etc.)
-    }
     setTheme(next);
+    startTransition(async () => {
+      await toggleTheme();
+    });
   }
 
   // Avoid a mismatched icon flash before we've read the current theme.
@@ -32,6 +35,7 @@ export default function ThemeToggle() {
   return (
     <button
       onClick={toggle}
+      disabled={isPending}
       aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
       title={isDark ? "Light mode" : "Dark mode"}
       className="btn btn-ghost h-9 w-9 flex-shrink-0 rounded-lg p-0 text-base"
