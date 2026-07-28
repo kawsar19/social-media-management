@@ -9,9 +9,10 @@ import {
   FaThreads,
   FaInstagram,
 } from "react-icons/fa6";
-import { FiImage, FiVideo, FiCheck, FiX, FiLoader, FiClock, FiLink } from "react-icons/fi";
+import { FiImage, FiVideo, FiCheck, FiX, FiLoader, FiClock, FiLink, FiZap } from "react-icons/fi";
 import { filterEnabledPages } from "../lib/enabledPages";
 import { getAccountsMap, getYouTubeToken } from "../lib/socialTokens";
+import { generateImageFile } from "../lib/imageGeneration";
 
 // The target platforms, in the order they publish (sequential).
 const PLATFORMS = [
@@ -67,6 +68,11 @@ export default function PublishPage() {
   const [image, setImage] = useState(null); // File
   const [preview, setPreview] = useState(null); // object URL
   const [video, setVideo] = useState(null); // File
+
+  // AI image generation — prompt + status for the "Generate image" control.
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState("");
 
   // Facebook Pages to post to.
   const [fbPages, setFbPages] = useState([]);
@@ -158,6 +164,25 @@ export default function PublishPage() {
   function clearImage() {
     setImage(null);
     setPreview(null);
+  }
+
+  // Generate an image from the prompt and set it as the post image. Uses the
+  // global generateImageFile helper so the same call works anywhere.
+  async function onGenerateImage() {
+    const prompt = imagePrompt.trim();
+    if (!prompt || generating) return;
+    setGenerating(true);
+    setGenError("");
+    try {
+      const file = await generateImageFile(prompt);
+      clearVideo();
+      setImage(file);
+      setPreview(URL.createObjectURL(file));
+    } catch (err) {
+      setGenError(err?.message || "Failed to generate image");
+    } finally {
+      setGenerating(false);
+    }
   }
 
   function onPickVideo(e) {
@@ -384,6 +409,8 @@ export default function PublishPage() {
     clearImage();
     clearVideo();
     setYtTitle("");
+    setImagePrompt("");
+    setGenError("");
   }
 
   const anyConnected =
@@ -498,6 +525,52 @@ export default function PublishPage() {
           placeholder="What do you want to share everywhere?"
           className="field w-full resize-none"
         />
+
+        {/* AI image generation — type a prompt, get an image set as the post
+            image. Hidden while a video is attached (image and video are
+            mutually exclusive here). */}
+        {!video && (
+          <div className="mt-4 rounded-xl border border-fuchsia-400/20 bg-fuchsia-400/5 p-4">
+            <label className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-fuchsia-400">
+              <FiZap className="h-3.5 w-3.5" /> Generate an image with AI
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                type="text"
+                value={imagePrompt}
+                onChange={(e) => setImagePrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    onGenerateImage();
+                  }
+                }}
+                placeholder="e.g. A cute robot cooking breakfast"
+                disabled={generating}
+                className="field w-full text-sm"
+              />
+              <button
+                type="button"
+                onClick={onGenerateImage}
+                disabled={generating || !imagePrompt.trim()}
+                className="btn btn-primary shrink-0 whitespace-nowrap"
+              >
+                {generating ? (
+                  <span className="inline-flex items-center gap-2">
+                    <FiLoader className="h-4 w-4 animate-spin" /> Generating…
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2">
+                    <FiZap className="h-4 w-4" /> Generate
+                  </span>
+                )}
+              </button>
+            </div>
+            {genError && (
+              <p className="mt-2 text-xs text-rose-300">{genError}</p>
+            )}
+          </div>
+        )}
 
         <div className="mt-4 flex flex-wrap items-start gap-3">
           {/* Image (hidden when a video is chosen) */}
