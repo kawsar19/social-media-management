@@ -2,7 +2,7 @@ import mongoose, { Schema, Document } from "mongoose";
 
 export interface ISocialAccount extends Document {
   userId: mongoose.Types.ObjectId;
-  platform: "linkedin" | "facebook" | "youtube";
+  platform: "linkedin" | "facebook" | "youtube" | "instagram" | "threads";
   platformId: string;
   platformName: string;
   accessToken: string;
@@ -15,7 +15,11 @@ export interface ISocialAccount extends Document {
 const SocialAccountSchema = new Schema<ISocialAccount>(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    platform: { type: String, required: true, enum: ["linkedin", "facebook", "youtube"] },
+    platform: {
+      type: String,
+      required: true,
+      enum: ["linkedin", "facebook", "youtube", "instagram", "threads"],
+    },
     platformId: { type: String, required: true },
     platformName: { type: String, required: true },
     accessToken: { type: String, required: true },

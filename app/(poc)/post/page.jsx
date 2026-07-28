@@ -11,12 +11,7 @@ import {
 } from "react-icons/fa6";
 import { FiImage, FiVideo, FiLink } from "react-icons/fi";
 import { filterEnabledPages } from "../lib/enabledPages";
-
-const LINKEDIN_KEY = "linkedin_access_token";
-const FB_KEY = "facebook_user_access_token";
-const YT_KEY = "youtube_access_token";
-const TH_KEY = "threads_access_token";
-const TH_USER_ID_KEY = "threads_user_id";
+import { getAccountsMap, getYouTubeToken } from "../lib/socialTokens";
 
 export default function PostPage() {
   const [platform, setPlatform] = useState("linkedin"); // "linkedin" | "facebook" | "instagram" | "youtube"
@@ -87,12 +82,27 @@ export default function PostPage() {
       ? thConnected
       : ytConnected;
 
+  // Load platform tokens from the DB. The Threads user id is the account's
+  // platformId. YouTube uses the refresh endpoint for a guaranteed-fresh token.
   useEffect(() => {
-    setLiToken(localStorage.getItem(LINKEDIN_KEY));
-    setFbToken(localStorage.getItem(FB_KEY));
-    setYtToken(localStorage.getItem(YT_KEY));
-    setThToken(localStorage.getItem(TH_KEY));
-    setThUserId(localStorage.getItem(TH_USER_ID_KEY));
+    let cancelled = false;
+    getAccountsMap().then((map) => {
+      if (cancelled) return;
+      setLiToken(map.linkedin?.accessToken || null);
+      setFbToken(map.facebook?.accessToken || null);
+      setThToken(map.threads?.accessToken || null);
+      setThUserId(map.threads?.platformId || null);
+    });
+    getYouTubeToken()
+      .then((t) => {
+        if (!cancelled) setYtToken(t);
+      })
+      .catch(() => {
+        if (!cancelled) setYtToken(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // When Facebook is selected and connected, load the Pages to choose from.

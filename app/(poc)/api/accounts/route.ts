@@ -5,7 +5,7 @@ import jwt from "jsonwebtoken";
 import { z } from "zod";
 
 const accountSchema = z.object({
-  platform: z.enum(["linkedin", "facebook", "youtube"]),
+  platform: z.enum(["linkedin", "facebook", "youtube", "instagram", "threads"]),
   platformId: z.string(),
   platformName: z.string(),
   accessToken: z.string(),
@@ -58,9 +58,23 @@ export async function POST(request: NextRequest) {
 
     const { platform, platformId, platformName, accessToken, refreshToken, expiresAt, scope } = parsed.data;
 
+    // Only overwrite the optional fields when they're actually provided. A
+    // re-save without a refreshToken (e.g. the connect page rehydrating an
+    // already-connected YouTube account) must NOT wipe the stored refresh
+    // token that server-side auto-refresh depends on.
+    const update: Record<string, unknown> = {
+      platformId,
+      platformName,
+      accessToken,
+      connectedAt: new Date(),
+    };
+    if (refreshToken !== undefined) update.refreshToken = refreshToken;
+    if (expiresAt !== undefined) update.expiresAt = expiresAt;
+    if (scope !== undefined) update.scope = scope;
+
     const account = await SocialAccount.findOneAndUpdate(
       { userId: user.userId, platform },
-      { platformId, platformName, accessToken, refreshToken, expiresAt, scope, connectedAt: new Date() },
+      update,
       { new: true, upsert: true }
     );
 

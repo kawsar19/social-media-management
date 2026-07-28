@@ -12,12 +12,17 @@ import {
 } from "react-icons/fa6";
 import { FiCheck } from "react-icons/fi";
 import { getEnabledPageIds, setEnabledPageIds } from "../lib/enabledPages";
+import {
+  fetchAccounts,
+  saveAccount,
+  deleteAccount,
+  getYouTubeToken,
+  getAppToken,
+} from "../lib/socialTokens";
 
 const LINKEDIN_CLIENT_ID = "869sxzia2ogeui";
 const REDIRECT_URI = "http://localhost:3001/api/auth/linkedin/callback";
 const SCOPE = "openid profile email w_member_social";
-const STORAGE_KEY = "linkedin_access_token";
-const FB_STORAGE_KEY = "facebook_user_access_token";
 
 function buildLinkedInAuthUrl() {
   const params = new URLSearchParams({
@@ -55,7 +60,6 @@ function buildFacebookAuthUrl() {
 // the Client Secret stays server-side and is only used by the callback route.
 const YT_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
 const YT_REDIRECT_URI = "http://localhost:3001/api/auth/youtube/callback";
-const YT_STORAGE_KEY = "youtube_access_token";
 // Scopes: readonly (channel/videos) + force-ssl (comment reply) +
 // yt-analytics.readonly (analytics) + upload (publish videos). Note: on an
 // unverified Google app, videos uploaded with youtube.upload are forced to
@@ -73,8 +77,11 @@ function buildYouTubeAuthUrl() {
     redirect_uri: YT_REDIRECT_URI,
     response_type: "code",
     scope: YT_SCOPE,
-    // access_type=offline + prompt=consent would return a refresh_token; we
-    // don't persist one in this POC, so the token just lasts ~1 hour.
+    // access_type=offline + prompt=consent make Google return a refresh_token.
+    // We persist it in the DB (SocialAccount) so the server can auto-refresh the
+    // ~1-hour access token instead of forcing the user to reconnect each hour.
+    access_type: "offline",
+    prompt: "consent",
     include_granted_scopes: "true",
     state: "poc",
   });
@@ -92,8 +99,6 @@ const TH_REDIRECT_URI =
   process.env.NEXT_PUBLIC_THREADS_REDIRECT_URI ||
   "http://localhost:3001/api/auth/threads/callback";
 const TH_SCOPE = "threads_basic,threads_content_publish";
-const TH_STORAGE_KEY = "threads_access_token";
-const TH_USER_ID_KEY = "threads_user_id";
 
 function buildThreadsAuthUrl() {
   const params = new URLSearchParams({
@@ -111,6 +116,21 @@ export default function ConnectPage() {
   const [profile, setProfile] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+
+  // Whether the user is logged into the app (has an app JWT). Connecting a
+  // platform persists it to the DB under this user, so we need to be logged in.
+  const [loggedIn, setLoggedIn] = useState(false);
+
+  // DB _id per connected platform, used to DELETE on disconnect. Keyed by
+  // platform ("linkedin" | "facebook" | "youtube" | "threads" | "instagram").
+  const [accountIds, setAccountIds] = useState({});
+
+  // A YouTube refresh_token captured from the OAuth callback hash. Google only
+  // returns it on first consent, so we stash it here until the channel loads
+  // and we persist the account (with its platformId) to the DB.
+  const [ytRefreshToken, setYtRefreshToken] = useState(null);
+  const [ytExpiresIn, setYtExpiresIn] = useState(null);
+  const [thUserIdPending, setThUserIdPending] = useState(null);
 
   // Facebook: connected via the "Login with Facebook" OAuth redirect. The
   // callback route returns the user access token in the URL hash, same as
@@ -148,8 +168,10 @@ export default function ConnectPage() {
   const [thError, setThError] = useState(null);
 
   // On mount: read the access token from the URL hash (set by the callback
-  // route), save it to localStorage, then clean the URL. Also restore any
-  // previously saved token.
+  // route) into React state, then clean the URL. The matching identity-load
+  // effect below persists it to the DB (SocialAccount) once it also knows the
+  // platform id/name. Tokens are NOT written to localStorage anymore — the DB
+  // is the source of truth (see loadAccountsFromDb).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const err = params.get("error");
@@ -165,17 +187,19 @@ export default function ConnectPage() {
       // told apart from LinkedIn's access_token.
       const fbAccessToken = hash.get("fb_access_token");
       if (fbAccessToken) {
-        localStorage.setItem(FB_STORAGE_KEY, fbAccessToken);
         setFbToken(fbAccessToken);
         window.history.replaceState(null, "", "/connect");
         return;
       }
 
-      // YouTube callback returns its token under yt_access_token.
+      // YouTube callback returns yt_access_token plus (first consent only) a
+      // yt_refresh_token and expires_in. Stash the refresh token/expiry so the
+      // channel-load effect can persist them for server-side auto-refresh.
       const ytAccessToken = hash.get("yt_access_token");
       if (ytAccessToken) {
-        localStorage.setItem(YT_STORAGE_KEY, ytAccessToken);
         setYtToken(ytAccessToken);
+        setYtRefreshToken(hash.get("yt_refresh_token") || null);
+        setYtExpiresIn(hash.get("expires_in") || null);
         window.history.replaceState(null, "", "/connect");
         return;
       }
@@ -184,24 +208,46 @@ export default function ConnectPage() {
       // Threads user id (needed later to publish as this account).
       const thAccessToken = hash.get("threads_access_token");
       if (thAccessToken) {
-        localStorage.setItem(TH_STORAGE_KEY, thAccessToken);
-        const thUserId = hash.get("threads_user_id");
-        if (thUserId) localStorage.setItem(TH_USER_ID_KEY, thUserId);
         setThToken(thAccessToken);
+        setThUserIdPending(hash.get("threads_user_id") || null);
         window.history.replaceState(null, "", "/connect");
         return;
       }
 
       const accessToken = hash.get("access_token");
       if (accessToken) {
-        localStorage.setItem(STORAGE_KEY, accessToken);
         setToken(accessToken);
         window.history.replaceState(null, "", "/connect");
         return;
       }
     }
+  }, []);
 
-    setToken(localStorage.getItem(STORAGE_KEY));
+  // On mount: load already-connected accounts from the DB and rehydrate the
+  // per-platform token + account-id state. This replaces reading tokens from
+  // localStorage. Skips silently when the user isn't logged in.
+  useEffect(() => {
+    setLoggedIn(Boolean(getAppToken()));
+    setEnabledPageIdsState(getEnabledPageIds());
+
+    let cancelled = false;
+    (async () => {
+      const accounts = await fetchAccounts();
+      if (cancelled || accounts.length === 0) return;
+      const ids = {};
+      for (const a of accounts) {
+        ids[a.platform] = a._id;
+        if (a.platform === "linkedin") setToken((t) => t ?? a.accessToken);
+        if (a.platform === "facebook") setFbToken((t) => t ?? a.accessToken);
+        if (a.platform === "youtube") setYtToken((t) => t ?? a.accessToken);
+        if (a.platform === "threads") setThToken((t) => t ?? a.accessToken);
+      }
+      setAccountIds(ids);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Whenever we have a token, fetch the LinkedIn profile via /v2/userinfo.
@@ -225,6 +271,14 @@ export default function ConnectPage() {
           setProfile(null);
         } else {
           setProfile(data);
+          // Persist the connection to the DB so the token survives across
+          // devices/sessions and the server can publish on the user's behalf.
+          persistAccount({
+            platform: "linkedin",
+            platformId: data.sub || "linkedin",
+            platformName: data.name || "LinkedIn Account",
+            accessToken: token,
+          });
         }
       })
       .catch(() => {
@@ -238,22 +292,6 @@ export default function ConnectPage() {
       cancelled = true;
     };
   }, [token]);
-
-  // On mount: restore a previously saved Facebook token + enabled-Pages choice.
-  useEffect(() => {
-    setFbToken(localStorage.getItem(FB_STORAGE_KEY));
-    setEnabledPageIdsState(getEnabledPageIds());
-  }, []);
-
-  // On mount: restore a previously saved YouTube token.
-  useEffect(() => {
-    setYtToken(localStorage.getItem(YT_STORAGE_KEY));
-  }, []);
-
-  // On mount: restore a previously saved Threads token.
-  useEffect(() => {
-    setThToken(localStorage.getItem(TH_STORAGE_KEY));
-  }, []);
 
   // Whenever we have a Threads token, load the profile via our
   // /api/auth/threads/profile proxy to confirm the connection.
@@ -279,6 +317,14 @@ export default function ConnectPage() {
           setThProfile(null);
         } else {
           setThProfile(data);
+          persistAccount({
+            platform: "threads",
+            platformId: thUserIdPending || data.id || "threads",
+            platformName: data.username
+              ? `@${data.username}`
+              : data.name || "Threads Account",
+            accessToken: thToken,
+          });
         }
       })
       .catch(() => {
@@ -317,6 +363,25 @@ export default function ConnectPage() {
           setYtChannel(null);
         } else {
           setYtChannel(data.channel || null);
+          if (data.channel) {
+            // Persist with the refresh_token + expiry so the server can auto-
+            // refresh the ~1h access token via /api/auth/youtube/token. On a
+            // rehydrated (already-connected) load we have no fresh refresh
+            // token in hand, so only send it when we captured one this session.
+            const acct = {
+              platform: "youtube",
+              platformId: data.channel.id,
+              platformName: data.channel.title || "YouTube Channel",
+              accessToken: ytToken,
+            };
+            if (ytRefreshToken) acct.refreshToken = ytRefreshToken;
+            if (ytExpiresIn) {
+              acct.expiresAt = new Date(
+                Date.now() + Number(ytExpiresIn) * 1000
+              ).toISOString();
+            }
+            persistAccount(acct);
+          }
         }
       })
       .catch(() => {
@@ -353,7 +418,19 @@ export default function ConnectPage() {
           setFbError(data.error || "Failed to load Facebook Pages");
           setFbPages([]);
         } else {
-          setFbPages(data.pages || []);
+          const pages = data.pages || [];
+          setFbPages(pages);
+          // Persist the Facebook user token. platformId uses the first Page id
+          // (or a generic marker); platformName lists the managed Pages.
+          persistAccount({
+            platform: "facebook",
+            platformId: pages[0]?.id || "facebook",
+            platformName:
+              pages.length > 0
+                ? pages.map((p) => p.name).join(", ")
+                : "Facebook Account",
+            accessToken: fbToken,
+          });
         }
       })
       .catch(() => {
@@ -391,7 +468,20 @@ export default function ConnectPage() {
           setIgError(data.error || "Failed to load Instagram accounts");
           setIgAccounts([]);
         } else {
-          setIgAccounts(data.accounts || []);
+          const accounts = data.accounts || [];
+          setIgAccounts(accounts);
+          // Instagram publishing uses the Facebook token, so persist that same
+          // token under the "instagram" platform keyed by the IG account id.
+          if (accounts.length > 0) {
+            persistAccount({
+              platform: "instagram",
+              platformId: accounts[0].id,
+              platformName: accounts
+                .map((a) => (a.username ? `@${a.username}` : a.name))
+                .join(", "),
+              accessToken: fbToken,
+            });
+          }
         }
       })
       .catch(() => {
@@ -406,14 +496,46 @@ export default function ConnectPage() {
     };
   }, [fbToken]);
 
+  // Persist a connected account to the DB and remember its _id so we can
+  // DELETE it on disconnect. Requires the user to be logged into the app.
+  async function persistAccount(account) {
+    if (!getAppToken()) {
+      setErrorMsg("Log in to save connected accounts.");
+      return;
+    }
+    try {
+      const saved = await saveAccount(account);
+      if (saved?._id) {
+        setAccountIds((prev) => ({ ...prev, [account.platform]: saved._id }));
+      }
+    } catch (e) {
+      setErrorMsg(`Failed to save ${account.platform} connection`);
+    }
+  }
+
+  // Remove a platform's account(s) from the DB and clear local UI state.
+  async function removeAccounts(...platforms) {
+    for (const p of platforms) {
+      const id = accountIds[p];
+      if (id) await deleteAccount(id);
+    }
+    setAccountIds((prev) => {
+      const next = { ...prev };
+      for (const p of platforms) delete next[p];
+      return next;
+    });
+  }
+
   function connectFacebook() {
     window.location.href = buildFacebookAuthUrl();
   }
 
   function disconnectFacebook() {
-    localStorage.removeItem(FB_STORAGE_KEY);
+    // Facebook and Instagram share the same token, so drop both.
+    removeAccounts("facebook", "instagram");
     setFbToken(null);
     setFbPages([]);
+    setIgAccounts([]);
     setFbError(null);
   }
 
@@ -428,7 +550,7 @@ export default function ConnectPage() {
   }
 
   function disconnectYouTube() {
-    localStorage.removeItem(YT_STORAGE_KEY);
+    removeAccounts("youtube");
     setYtToken(null);
     setYtChannel(null);
     setYtError(null);
@@ -445,8 +567,7 @@ export default function ConnectPage() {
   }
 
   function disconnectThreads() {
-    localStorage.removeItem(TH_STORAGE_KEY);
-    localStorage.removeItem(TH_USER_ID_KEY);
+    removeAccounts("threads");
     setThToken(null);
     setThProfile(null);
     setThError(null);
@@ -454,11 +575,11 @@ export default function ConnectPage() {
 
   // Manual token path: paste a token straight from Meta's Threads token
   // generator (developers.facebook.com/apps/.../threads) instead of running the
-  // OAuth redirect. Saving it triggers the same profile-load effect as OAuth.
+  // OAuth redirect. Saving it triggers the same profile-load effect as OAuth,
+  // which then persists the account to the DB.
   function saveThreadsToken(raw) {
     const t = raw.trim();
     if (!t) return;
-    localStorage.setItem(TH_STORAGE_KEY, t);
     setThToken(t);
     setThError(null);
   }
@@ -477,7 +598,7 @@ export default function ConnectPage() {
   }
 
   function disconnectLinkedIn() {
-    localStorage.removeItem(STORAGE_KEY);
+    removeAccounts("linkedin");
     setToken(null);
     setProfile(null);
   }

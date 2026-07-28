@@ -6,10 +6,11 @@ import { NextResponse } from "next/server";
 // /connect with the token in the URL hash so the client can save it to
 // localStorage. Mirrors the Facebook callback flow.
 //
-// Note (POC): Google access tokens expire in ~1 hour and we do NOT persist the
-// refresh token here, so the user re-connects when it expires. That keeps this
-// consistent with the Facebook/LinkedIn flow. To keep sessions alive long-term
-// you'd store the refresh_token in an httpOnly cookie and refresh server-side.
+// Google access tokens expire in ~1 hour. With access_type=offline +
+// prompt=consent (set on the auth URL) Google also returns a refresh_token,
+// which we forward to /connect so the client can persist it in the DB. The
+// server then auto-refreshes the access token via /api/auth/youtube/token,
+// instead of forcing the user to reconnect every hour.
 export async function GET(request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
@@ -52,9 +53,14 @@ export async function GET(request) {
 
   // Return the token under yt_access_token so the connect page can tell it
   // apart from Facebook/LinkedIn tokens. Hash keeps it out of server logs.
-  return NextResponse.redirect(
-    `${origin}/connect#yt_access_token=${encodeURIComponent(
-      data.access_token
-    )}&expires_in=${data.expires_in ?? ""}`
-  );
+  // refresh_token is only present the first time the user consents (or when
+  // prompt=consent forces it), so forward it whenever Google sends it.
+  const hashParams = new URLSearchParams({
+    yt_access_token: data.access_token,
+    expires_in: String(data.expires_in ?? ""),
+  });
+  if (data.refresh_token) {
+    hashParams.set("yt_refresh_token", data.refresh_token);
+  }
+  return NextResponse.redirect(`${origin}/connect#${hashParams.toString()}`);
 }

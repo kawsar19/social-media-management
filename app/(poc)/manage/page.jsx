@@ -4,9 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import PostComments from "./PostComments";
 import { filterEnabledPages } from "../lib/enabledPages";
+import { getPlatformToken } from "../lib/socialTokens";
 import { FiRefreshCw } from "react-icons/fi";
-
-const FB_KEY = "facebook_user_access_token";
 
 export default function ManagePage() {
   const [fbToken, setFbToken] = useState(null);
@@ -24,8 +23,15 @@ export default function ManagePage() {
 
   const connected = Boolean(fbToken);
 
+  // Facebook token from the DB instead of localStorage.
   useEffect(() => {
-    setFbToken(localStorage.getItem(FB_KEY));
+    let cancelled = false;
+    getPlatformToken("facebook").then((t) => {
+      if (!cancelled) setFbToken(t);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Load the Pages the user manages.

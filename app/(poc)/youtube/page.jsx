@@ -10,8 +10,7 @@ import {
   FiMessageCircle,
   FiArrowUpRight,
 } from "react-icons/fi";
-
-const YT_KEY = "youtube_access_token";
+import { getYouTubeToken } from "../lib/socialTokens";
 
 export default function YouTubePage() {
   const [ytToken, setYtToken] = useState(null);
@@ -23,8 +22,20 @@ export default function YouTubePage() {
 
   const connected = Boolean(ytToken);
 
+  // Fetch a fresh YouTube access token from the DB (server-side auto-refresh)
+  // instead of reading a possibly-expired token from localStorage.
   useEffect(() => {
-    setYtToken(localStorage.getItem(YT_KEY));
+    let cancelled = false;
+    getYouTubeToken()
+      .then((t) => {
+        if (!cancelled) setYtToken(t);
+      })
+      .catch(() => {
+        if (!cancelled) setYtToken(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function loadChannel(token) {

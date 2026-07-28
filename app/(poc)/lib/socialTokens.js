@@ -1,0 +1,111 @@
+// Client-side helpers for reading/writing connected social accounts from the
+// DB (via /api/accounts) instead of localStorage. All calls are authenticated
+// with the app JWT that AuthProvider stores under "social_manager_auth".
+//
+// Platform tokens themselves live server-side in the SocialAccount collection;
+// these helpers hand the current access token back to the client so the
+// existing consumer routes (which take Bearer <platform_token>) keep working.
+
+const AUTH_KEY = "social_manager_auth";
+
+// The app JWT (NOT a platform token). Needed to authorize /api/accounts calls.
+export function getAppToken() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(AUTH_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw)?.token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function authHeaders() {
+  const jwt = getAppToken();
+  return jwt ? { Authorization: `Bearer ${jwt}` } : {};
+}
+
+// All connected accounts for the logged-in user: [{ platform, platformId,
+// platformName, accessToken, expiresAt, ... }]. Returns [] when logged out.
+export async function fetchAccounts() {
+  const jwt = getAppToken();
+  if (!jwt) return [];
+  const res = await fetch("/api/accounts", {
+    headers: authHeaders(),
+    cache: "no-store",
+  });
+  if (!res.ok) return [];
+  const data = await res.json().catch(() => ({}));
+  return Array.isArray(data.accounts) ? data.accounts : [];
+}
+
+// Persist (upsert) one connected account. `account` must include platform,
+// platformId, platformName, accessToken, and optionally refreshToken/
+// expiresAt/scope.
+export async function saveAccount(account) {
+  const jwt = getAppToken();
+  if (!jwt) throw new Error("not_logged_in");
+  const res = await fetch("/api/accounts", {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(account),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error?.formErrors?.[0] || data.error || "save_failed");
+  }
+  const data = await res.json();
+  return data.account;
+}
+
+// Remove a connected account by its DB _id.
+export async function deleteAccount(id) {
+  const jwt = getAppToken();
+  if (!jwt || !id) return;
+  await fetch(`/api/accounts?id=${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+}
+
+// The current access token for a platform, or null if not connected. For
+// non-YouTube platforms this is whatever was stored at connect time (these
+// tokens still expire per the platform's own lifetime — only YouTube auto-
+// refreshes; see getYouTubeToken).
+export async function getPlatformToken(platform) {
+  const accounts = await fetchAccounts();
+  const acct = accounts.find((a) => a.platform === platform);
+  return acct?.accessToken ?? null;
+}
+
+// A map of platform -> { accessToken, platformId, platformName } for every
+// connected account, for pages that read several platforms at once. Does NOT
+// auto-refresh YouTube — use getYouTubeToken() when you need a fresh YT token.
+export async function getAccountsMap() {
+  const accounts = await fetchAccounts();
+  const map = {};
+  for (const a of accounts) {
+    map[a.platform] = {
+      accessToken: a.accessToken,
+      platformId: a.platformId,
+      platformName: a.platformName,
+    };
+  }
+  return map;
+}
+
+// A guaranteed-fresh YouTube access token. Hits /api/auth/youtube/token, which
+// refreshes server-side via the stored refresh_token when the token has
+// expired. Returns the accessToken string or throws with a reason (e.g.
+// reauth_required).
+export async function getYouTubeToken() {
+  const jwt = getAppToken();
+  if (!jwt) throw new Error("not_logged_in");
+  const res = await fetch("/api/auth/youtube/token", {
+    headers: authHeaders(),
+    cache: "no-store",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "youtube_token_failed");
+  return data.accessToken;
+}

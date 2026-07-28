@@ -16,11 +16,7 @@ import {
   FiInbox,
 } from "react-icons/fi";
 import { filterEnabledPages } from "../lib/enabledPages";
-
-// Token storage keys — must match the ones the connect/manage pages write.
-const FB_KEY = "facebook_user_access_token";
-const YT_KEY = "youtube_access_token";
-const TH_KEY = "threads_access_token";
+import { getAccountsMap, getYouTubeToken } from "../lib/socialTokens";
 
 // Quick time windows the user asked for.
 const WINDOWS = [
@@ -75,10 +71,25 @@ export default function InboxPage() {
   // Date.now() during render) so time-window filtering stays a pure computation.
   const [nowMs, setNowMs] = useState(() => Date.now());
 
+  // Load platform tokens from the DB. YouTube goes through the refresh
+  // endpoint so an expired token is renewed server-side.
   useEffect(() => {
-    setFbToken(localStorage.getItem(FB_KEY));
-    setYtToken(localStorage.getItem(YT_KEY));
-    setThToken(localStorage.getItem(TH_KEY));
+    let cancelled = false;
+    getAccountsMap().then((map) => {
+      if (cancelled) return;
+      setFbToken(map.facebook?.accessToken || null);
+      setThToken(map.threads?.accessToken || null);
+    });
+    getYouTubeToken()
+      .then((t) => {
+        if (!cancelled) setYtToken(t);
+      })
+      .catch(() => {
+        if (!cancelled) setYtToken(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const anyConnected = Boolean(fbToken || ytToken || thToken);

@@ -11,12 +11,7 @@ import {
 } from "react-icons/fa6";
 import { FiImage, FiVideo, FiCheck, FiX, FiLoader, FiClock, FiLink } from "react-icons/fi";
 import { filterEnabledPages } from "../lib/enabledPages";
-
-const LINKEDIN_KEY = "linkedin_access_token";
-const FB_KEY = "facebook_user_access_token";
-const YT_KEY = "youtube_access_token";
-const TH_KEY = "threads_access_token";
-const TH_USER_ID_KEY = "threads_user_id";
+import { getAccountsMap, getYouTubeToken } from "../lib/socialTokens";
 
 // The target platforms, in the order they publish (sequential).
 const PLATFORMS = [
@@ -86,14 +81,26 @@ export default function PublishPage() {
   const [runs, setRuns] = useState(null); // null = not started; else { [id]: {status, message} }
   const [publishing, setPublishing] = useState(false);
 
+  // Load platform tokens from the DB. YouTube uses the refresh endpoint so an
+  // expired token is renewed server-side; the Threads user id is its platformId.
   useEffect(() => {
-    setTokens({
-      linkedin: localStorage.getItem(LINKEDIN_KEY),
-      facebook: localStorage.getItem(FB_KEY),
-      youtube: localStorage.getItem(YT_KEY),
-      threads: localStorage.getItem(TH_KEY),
+    let cancelled = false;
+    Promise.all([
+      getAccountsMap(),
+      getYouTubeToken().catch(() => null),
+    ]).then(([map, ytToken]) => {
+      if (cancelled) return;
+      setTokens({
+        linkedin: map.linkedin?.accessToken || null,
+        facebook: map.facebook?.accessToken || null,
+        youtube: ytToken || null,
+        threads: map.threads?.accessToken || null,
+      });
+      setThUserId(map.threads?.platformId || null);
     });
-    setThUserId(localStorage.getItem(TH_USER_ID_KEY));
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Load Facebook Pages when connected + selected.

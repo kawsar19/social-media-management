@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { FiRefreshCw, FiArrowRight } from "react-icons/fi";
 import { FaYoutube } from "react-icons/fa6";
+import { getYouTubeToken } from "../lib/socialTokens";
 
-const YT_KEY = "youtube_access_token";
 const DAYS = 28;
 
 function StatCard({ label, value }) {
@@ -30,8 +30,19 @@ export default function YouTubeInsightsPage() {
 
   const connected = Boolean(ytToken);
 
+  // Fresh YouTube token from the DB (server-side auto-refresh).
   useEffect(() => {
-    setYtToken(localStorage.getItem(YT_KEY));
+    let cancelled = false;
+    getYouTubeToken()
+      .then((t) => {
+        if (!cancelled) setYtToken(t);
+      })
+      .catch(() => {
+        if (!cancelled) setYtToken(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function loadAnalytics(token) {

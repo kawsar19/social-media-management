@@ -4,8 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { FiBarChart2 } from "react-icons/fi";
 import { filterEnabledPages } from "../lib/enabledPages";
-
-const FB_KEY = "facebook_user_access_token";
+import { getPlatformToken } from "../lib/socialTokens";
 
 function StatCard({ label, value }) {
   return (
@@ -35,8 +34,15 @@ export default function InsightsPage() {
 
   const connected = Boolean(fbToken);
 
+  // Facebook token from the DB instead of localStorage.
   useEffect(() => {
-    setFbToken(localStorage.getItem(FB_KEY));
+    let cancelled = false;
+    getPlatformToken("facebook").then((t) => {
+      if (!cancelled) setFbToken(t);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
