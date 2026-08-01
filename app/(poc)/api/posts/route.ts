@@ -2,27 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
 import { connectDB } from "@/lib/db";
 import Post from "@/lib/models/Post";
-import jwt from "jsonwebtoken";
-import { z } from "zod";
+import { getUser, postInputSchema } from "./postSchema";
 
-const postSchema = z.object({
-  accountId: z.string(),
-  content: z.string().min(1),
-  mediaUrl: z.string().optional(),
-  status: z.enum(["draft", "scheduled", "published", "failed"]).optional(),
-  scheduledAt: z.coerce.date().optional(),
-});
-
-function getUser(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) return null;
-  const token = authHeader.slice("Bearer ".length);
-  try {
-    return jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
-  } catch {
-    return null;
-  }
-}
+// GET  /api/posts?status=draft   — list the logged-in user's posts (newest first)
+// POST /api/posts                — create a draft/scheduled post with its targets
+//
+// A post is authored once and carries its target list (where it will be
+// published). Actual publishing + per-target results happen in
+// /api/posts/[id]/publish; this route only stores the authored content.
 
 export async function GET(request: NextRequest) {
   try {
@@ -35,15 +22,13 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status") || undefined;
-    const platform = searchParams.get("platform") || undefined;
 
     const filter: Record<string, unknown> = { userId: user.userId };
     if (status) filter.status = status;
-    if (platform) filter.platform = platform;
 
-    const posts = await Post.find(filter).sort({ createdAt: -1 }).populate("accountId", "platform platformName");
+    const posts = await Post.find(filter).sort({ createdAt: -1 });
     return NextResponse.json({ posts });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
 }
@@ -58,26 +43,42 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => null);
-    const parsed = postSchema.safeParse(body);
+    const parsed = postInputSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    const { accountId, content, mediaUrl, status, scheduledAt } = parsed.data;
-
-    const post = await Post.create({
-      userId: user.userId,
-      accountId: new mongoose.Types.ObjectId(accountId),
+    const {
       content,
       mediaUrl,
+      mediaType,
+      youtubeTitle,
+      youtubePrivacy,
+      status,
+      scheduledAt,
+      targets,
+    } = parsed.data;
+
+    // A post needs either some text or media to be worth saving.
+    if (!content.trim() && !mediaUrl) {
+      return NextResponse.json({ error: "empty_post" }, { status: 400 });
+    }
+
+    const post = await Post.create({
+      userId: new mongoose.Types.ObjectId(user.userId),
+      content,
+      mediaUrl,
+      mediaType,
+      youtubeTitle,
+      youtubePrivacy,
       status: status || "draft",
       scheduledAt,
-      platform: "unknown",
+      // Each target starts pending until the publish route runs it.
+      targets: targets.map((t) => ({ ...t, status: "pending" as const })),
     });
 
-    const populated = await Post.findById(post._id).populate("accountId", "platform platformName");
-    return NextResponse.json({ post: populated }, { status: 201 });
-  } catch (error) {
+    return NextResponse.json({ post }, { status: 201 });
+  } catch {
     return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
 }

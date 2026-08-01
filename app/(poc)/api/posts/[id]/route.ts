@@ -1,54 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
-import mongoose from "mongoose";
 import { connectDB } from "@/lib/db";
 import Post from "@/lib/models/Post";
-import jwt from "jsonwebtoken";
-import { z } from "zod";
+import { getUser, postInputSchema } from "../postSchema";
 
-const postSchema = z.object({
-  accountId: z.string(),
-  content: z.string().min(1),
-  mediaUrl: z.string().optional(),
-  status: z.enum(["draft", "scheduled", "published", "failed"]).optional(),
-  scheduledAt: z.coerce.date().optional(),
-});
-
-function getUser(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) return null;
-  const token = authHeader.slice("Bearer ".length);
-  try {
-    return jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
-  } catch {
-    return null;
-  }
-}
+// GET    /api/posts/[id]  — read one post (with its targets + publish results)
+// PATCH  /api/posts/[id]  — edit a post (only draft/scheduled fields; not results)
+// DELETE /api/posts/[id]  — delete a post
 
 export async function GET(request: NextRequest, { params }: { params: any }) {
   try {
     await connectDB();
-
     const { id } = await params;
     const user = getUser(request);
     if (!user) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
-    const post = await Post.findOne({ _id: id, userId: user.userId }).populate("accountId", "platform platformName");
+    const post = await Post.findOne({ _id: id, userId: user.userId });
     if (!post) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
-
     return NextResponse.json({ post });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: any }) {
+export async function PATCH(request: NextRequest, { params }: { params: any }) {
   try {
     await connectDB();
-
     const { id } = await params;
     const user = getUser(request);
     if (!user) {
@@ -60,18 +40,33 @@ export async function PUT(request: NextRequest, { params }: { params: any }) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
 
+    // Editing a post that's already published/publishing would desync the stored
+    // per-target results, so only drafts and scheduled posts are editable.
+    if (post.status !== "draft" && post.status !== "scheduled") {
+      return NextResponse.json({ error: "not_editable" }, { status: 409 });
+    }
+
     const body = await request.json().catch(() => null);
-    const parsed = postSchema.partial().safeParse(body);
+    const parsed = postInputSchema.partial().safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    Object.assign(post, parsed.data);
-    await post.save();
+    const data = parsed.data;
+    if (data.content !== undefined) post.content = data.content;
+    if (data.mediaUrl !== undefined) post.mediaUrl = data.mediaUrl;
+    if (data.mediaType !== undefined) post.mediaType = data.mediaType;
+    if (data.youtubeTitle !== undefined) post.youtubeTitle = data.youtubeTitle;
+    if (data.youtubePrivacy !== undefined) post.youtubePrivacy = data.youtubePrivacy;
+    if (data.status !== undefined) post.status = data.status;
+    if (data.scheduledAt !== undefined) post.scheduledAt = data.scheduledAt;
+    if (data.targets !== undefined) {
+      post.targets = data.targets.map((t) => ({ ...t, status: "pending" as const }));
+    }
 
-    const populated = await Post.findById(post._id).populate("accountId", "platform platformName");
-    return NextResponse.json({ post: populated });
-  } catch (error) {
+    await post.save();
+    return NextResponse.json({ post });
+  } catch {
     return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
 }
@@ -79,7 +74,6 @@ export async function PUT(request: NextRequest, { params }: { params: any }) {
 export async function DELETE(request: NextRequest, { params }: { params: any }) {
   try {
     await connectDB();
-
     const { id } = await params;
     const user = getUser(request);
     if (!user) {
@@ -90,9 +84,8 @@ export async function DELETE(request: NextRequest, { params }: { params: any }) 
     if (!post) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
-
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
 }

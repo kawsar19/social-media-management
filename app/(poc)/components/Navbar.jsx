@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { FiEdit3, FiSend, FiFolder, FiBarChart2, FiTrendingUp, FiLink, FiZap, FiMenu, FiX, FiLogOut, FiUser, FiChevronDown, FiInbox } from "react-icons/fi";
+import { FiEdit3, FiSend, FiFolder, FiBarChart2, FiTrendingUp, FiLink, FiZap, FiMenu, FiX, FiLogOut, FiUser, FiChevronDown, FiInbox, FiArchive } from "react-icons/fi";
 import { FaYoutube, FaFacebook } from "react-icons/fa6";
 import ThemeToggle from "./ThemeToggle";
 import { useAuth } from "./AuthProvider";
@@ -15,6 +15,7 @@ const menus = [
     items: [
       { href: "/post", label: "Compose", Icon: FiEdit3 },
       { href: "/publish", label: "Publish All", Icon: FiSend },
+      { href: "/profile/posts", label: "Saved Posts", Icon: FiArchive },
     ],
   },
   {
@@ -241,10 +242,13 @@ export default function Navbar() {
           <ThemeToggle />
           {user ? (
             <div className="flex items-center gap-2 pl-2">
-              <span className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-slate-300">
+              <Link
+                href="/profile"
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-slate-300 transition-colors hover:bg-white/[0.08] hover:text-white"
+              >
                 <FiUser className="h-3.5 w-3.5" />
                 <span className="max-w-[120px] truncate">{user.name}</span>
-              </span>
+              </Link>
               <button
                 type="button"
                 onClick={handleLogout}

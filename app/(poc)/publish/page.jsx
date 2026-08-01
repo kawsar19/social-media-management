@@ -13,6 +13,7 @@ import { FiImage, FiVideo, FiCheck, FiX, FiLoader, FiClock, FiLink, FiZap } from
 import { filterEnabledPages } from "../lib/enabledPages";
 import { getAccountsMap, getYouTubeToken, uploadMedia } from "../lib/socialTokens";
 import { generateImageFile } from "../lib/imageGeneration";
+import { createPost, publishPost } from "../lib/posts";
 
 // The target platforms, in the order they publish (sequential).
 const PLATFORMS = [
@@ -98,6 +99,10 @@ export default function PublishPage() {
   // Live run state: per-platform { status, message } while publishing.
   const [runs, setRuns] = useState(null); // null = not started; else { [id]: {status, message} }
   const [publishing, setPublishing] = useState(false);
+  // Saving a post to the DB (draft) or save+publish; separate from the legacy
+  // client-side "Publish to all" flow.
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
 
   // Load platform tokens from the DB. YouTube uses the refresh endpoint so an
   // expired token is renewed server-side; the Threads user id is its platformId.
@@ -484,8 +489,110 @@ export default function PublishPage() {
     setPublishing(false);
   }
 
+  // Build the DB target list from the current selection. Facebook expands to one
+  // target per selected Page (each a distinct destination); Instagram carries
+  // the chosen IG account; the rest carry the account's own identity.
+  function buildTargets() {
+    const targets = [];
+    for (const p of activeTargets) {
+      if (p.id === "facebook") {
+        for (const pageId of selectedPageIds) {
+          const page = fbPages.find((fp) => fp.id === pageId);
+          targets.push({
+            platform: "facebook",
+            accountName: accountMeta.facebook?.platformName,
+            destinationId: pageId,
+            destinationName: page?.name,
+          });
+        }
+        continue;
+      }
+      if (p.id === "instagram") {
+        const acc = igAccounts.find((a) => a.id === selectedIgId) || igAccounts[0];
+        targets.push({
+          platform: "instagram",
+          destinationId: acc?.id,
+          destinationName: acc?.username ? `@${acc.username}` : acc?.name,
+        });
+        continue;
+      }
+      const meta = accountMeta[p.id];
+      targets.push({
+        platform: p.id,
+        accountName: meta?.platformName,
+        destinationId: meta?.platformId,
+      });
+    }
+    return targets;
+  }
+
+  // Assemble the post payload shared by "save draft" and "save & publish".
+  function buildPostPayload(status) {
+    const payload = {
+      content: text,
+      targets: buildTargets(),
+      status,
+    };
+    if (mediaUrl.trim()) {
+      payload.mediaUrl = mediaUrl.trim();
+      payload.mediaType = mediaUrlIsVideo ? "video" : "image";
+    }
+    if (ytTitle.trim()) payload.youtubeTitle = ytTitle.trim();
+    if (ytPrivacy) payload.youtubePrivacy = ytPrivacy;
+    return payload;
+  }
+
+  async function onSaveDraft() {
+    if (saving) return;
+    setSaving(true);
+    setSaveMsg("");
+    try {
+      await createPost(buildPostPayload("draft"));
+      setSaveMsg("Saved to your posts.");
+    } catch (e) {
+      setSaveMsg(e?.message || "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Save the post to the DB, then publish it server-side so every destination's
+  // result is recorded on the post. Mirrors the live per-platform UI from the
+  // saved post's targets after it returns.
+  async function onSaveAndPublish() {
+    if (saving || !canPublish) return;
+    setSaving(true);
+    setSaveMsg("");
+    setPublishing(true);
+    try {
+      const created = await createPost(buildPostPayload("draft"));
+      const published = await publishPost(created._id);
+      // Reflect the server results in the live progress panel.
+      const next = {};
+      for (const t of published.targets || []) {
+        next[t.platform] = {
+          status: t.status === "success" ? STATUS.done : STATUS.failed,
+          message:
+            t.status === "success"
+              ? t.platformPostId
+                ? `Published (${t.platformPostId})`
+                : "Published"
+              : t.error || "Failed",
+        };
+      }
+      setRuns(next);
+      setSaveMsg("Saved and published — see your posts for details.");
+    } catch (e) {
+      setSaveMsg(e?.message || "Failed to publish");
+    } finally {
+      setSaving(false);
+      setPublishing(false);
+    }
+  }
+
   function reset() {
     setRuns(null);
+    setSaveMsg("");
     setText("");
     clearImage();
     clearVideo();
@@ -883,7 +990,7 @@ export default function PublishPage() {
         )}
 
         {/* Action row */}
-        <div className="mt-5 flex items-center justify-between border-t border-white/10 pt-5">
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5">
           <span className="text-sm text-slate-500">
             {activeTargets.length > 0 ? (
               <>
@@ -901,11 +1008,35 @@ export default function PublishPage() {
               New post
             </button>
           ) : (
-            <button onClick={publishAll} disabled={!canPublish} className="btn btn-primary">
-              {publishing ? "Publishing…" : "Publish to all"}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Save the post to the DB without publishing (draft). */}
+              <button
+                onClick={onSaveDraft}
+                disabled={saving || uploading || !hasContent}
+                className="btn btn-ghost"
+              >
+                {saving ? "Saving…" : "Save as draft"}
+              </button>
+              {/* Save + publish server-side: results are recorded on the post. */}
+              <button
+                onClick={onSaveAndPublish}
+                disabled={saving || !canPublish}
+                className="btn btn-primary"
+              >
+                {saving || publishing ? "Publishing…" : "Save & publish"}
+              </button>
+            </div>
           )}
         </div>
+
+        {saveMsg && (
+          <p className="mt-3 flex items-center justify-between gap-2 text-sm text-emerald-300">
+            <span>{saveMsg}</span>
+            <Link href="/profile/posts" className="shrink-0 underline hover:text-white">
+              View posts →
+            </Link>
+          </p>
+        )}
 
         {fbNeedsPage && (
           <p className="mt-3 text-sm text-amber-300">Select at least one Facebook Page.</p>
