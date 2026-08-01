@@ -351,14 +351,30 @@ export default function ConnectPage() {
     setYtLoading(true);
     setYtError(null);
 
-    fetch("/api/auth/youtube/channel", {
-      headers: { Authorization: `Bearer ${ytToken}` },
-    })
-      .then(async (res) => {
+    (async () => {
+      // The ytToken in state may be a stale one rehydrated from the DB (Google
+      // access tokens last ~1 hour). Ask the server for a guaranteed-fresh
+      // token first — it refreshes via the stored refresh_token when needed —
+      // and fall back to the in-hand token (e.g. right after OAuth, before it's
+      // persisted, or when no refresh_token is on file).
+      let activeToken = ytToken;
+      try {
+        const fresh = await getYouTubeToken();
+        if (fresh) activeToken = fresh;
+      } catch {
+        // reauth_required / refresh_failed / not-yet-persisted — fall through
+        // with ytToken; the channel call below surfaces a real error if it's dead.
+      }
+      if (cancelled) return;
+
+      try {
+        const res = await fetch("/api/auth/youtube/channel", {
+          headers: { Authorization: `Bearer ${activeToken}` },
+        });
         const data = await res.json();
         if (cancelled) return;
         if (!res.ok) {
-          // Most likely an expired token (Google tokens last ~1 hour).
+          // Most likely an expired/revoked token that couldn't be refreshed.
           setYtError(data.error || "Failed to load YouTube channel");
           setYtChannel(null);
         } else {
@@ -372,7 +388,7 @@ export default function ConnectPage() {
               platform: "youtube",
               platformId: data.channel.id,
               platformName: data.channel.title || "YouTube Channel",
-              accessToken: ytToken,
+              accessToken: activeToken,
             };
             if (ytRefreshToken) acct.refreshToken = ytRefreshToken;
             if (ytExpiresIn) {
@@ -383,13 +399,12 @@ export default function ConnectPage() {
             persistAccount(acct);
           }
         }
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setYtError("Failed to load YouTube channel");
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setYtLoading(false);
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
