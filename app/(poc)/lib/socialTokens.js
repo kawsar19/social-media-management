@@ -109,3 +109,22 @@ export async function getYouTubeToken() {
   if (!res.ok) throw new Error(data.error || "youtube_token_failed");
   return data.accessToken;
 }
+
+// Upload a File (image or video) to Cloudinary via /api/upload and get back a
+// public https URL. Instagram and Threads fetch media by URL rather than
+// accepting uploaded files, so this turns a local file pick into a URL they can
+// consume. Returns { url, resourceType } or throws with a reason.
+export async function uploadMedia(file) {
+  const jwt = getAppToken();
+  if (!jwt) throw new Error("not_logged_in");
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/upload", {
+    method: "POST",
+    headers: authHeaders(), // Bearer app JWT; do NOT set Content-Type for FormData
+    body: fd,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "upload_failed");
+  return { url: data.url, resourceType: data.resourceType };
+}

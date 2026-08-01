@@ -11,7 +11,7 @@ import {
 } from "react-icons/fa6";
 import { FiImage, FiVideo, FiCheck, FiX, FiLoader, FiClock, FiLink, FiZap } from "react-icons/fi";
 import { filterEnabledPages } from "../lib/enabledPages";
-import { getAccountsMap, getYouTubeToken } from "../lib/socialTokens";
+import { getAccountsMap, getYouTubeToken, uploadMedia } from "../lib/socialTokens";
 import { generateImageFile } from "../lib/imageGeneration";
 
 // The target platforms, in the order they publish (sequential).
@@ -45,14 +45,26 @@ export default function PublishPage() {
   // Threads needs its user id (not just a token) to publish as the account.
   const [thUserId, setThUserId] = useState(null);
 
+  // Per-platform identity ({ platformId, platformName }) from the DB, so we can
+  // show WHERE each post is going (account name + id + a profile URL) instead of
+  // just "Selected". Keyed by platform id.
+  const [accountMeta, setAccountMeta] = useState({});
+
   // Instagram accounts linked to the Facebook token (loaded when FB connected).
   // IG publishing needs a chosen account id + a public media URL (below).
   const [igAccounts, setIgAccounts] = useState([]);
   const [selectedIgId, setSelectedIgId] = useState("");
 
-  // Optional public https media URL — the only way Instagram (and Threads) can
-  // take media, since they fetch it by URL rather than accepting an upload.
+  // Public https media URL — the only way Instagram (and Threads) can take
+  // media, since they fetch it by URL rather than accepting an upload. This is
+  // filled automatically: when the user picks/generates an image or picks a
+  // video, we upload it to Cloudinary and store the returned URL here. No manual
+  // paste needed. resourceType ("image" | "video") comes from Cloudinary so we
+  // route the URL to the right IG/Threads field.
   const [mediaUrl, setMediaUrl] = useState("");
+  const [mediaResourceType, setMediaResourceType] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
 
   // Which platforms the user wants to publish to.
   const [selected, setSelected] = useState({
@@ -103,6 +115,9 @@ export default function PublishPage() {
         threads: map.threads?.accessToken || null,
       });
       setThUserId(map.threads?.platformId || null);
+      // Keep each platform's { platformId, platformName } to show the post
+      // destination in the UI. (Facebook lists Pages separately below.)
+      setAccountMeta(map);
     });
     return () => {
       cancelled = true;
@@ -154,16 +169,46 @@ export default function PublishPage() {
     };
   }, [selected.instagram, tokens.facebook]);
 
+  // Upload the picked/generated file to Cloudinary and stash the public URL +
+  // resource type. Instagram/Threads publish off mediaUrl, so this is what makes
+  // a local file usable on those platforms without any manual URL paste.
+  async function uploadForMedia(file) {
+    setUploading(true);
+    setUploadError("");
+    try {
+      const { url, resourceType } = await uploadMedia(file);
+      setMediaUrl(url);
+      setMediaResourceType(resourceType || null);
+    } catch (err) {
+      setMediaUrl("");
+      setMediaResourceType(null);
+      setUploadError(err?.message || "Failed to upload media");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  // Clear any uploaded media URL (e.g. when the file is removed/replaced).
+  function clearMediaUrl() {
+    setMediaUrl("");
+    setMediaResourceType(null);
+    setUploadError("");
+  }
+
   function onPickImage(e) {
     const file = e.target.files?.[0] ?? null;
     setImage(file);
     setPreview(file ? URL.createObjectURL(file) : null);
-    if (file) clearVideo();
+    if (file) {
+      clearVideo();
+      uploadForMedia(file);
+    }
   }
 
   function clearImage() {
     setImage(null);
     setPreview(null);
+    clearMediaUrl();
   }
 
   // Generate an image from the prompt and set it as the post image. Uses the
@@ -178,6 +223,7 @@ export default function PublishPage() {
       clearVideo();
       setImage(file);
       setPreview(URL.createObjectURL(file));
+      uploadForMedia(file);
     } catch (err) {
       setGenError(err?.message || "Failed to generate image");
     } finally {
@@ -191,11 +237,13 @@ export default function PublishPage() {
     if (file) {
       clearImage();
       if (!ytTitle.trim()) setYtTitle(file.name.replace(/\.[^.]+$/, ""));
+      uploadForMedia(file);
     }
   }
 
   function clearVideo() {
     setVideo(null);
+    clearMediaUrl();
   }
 
   function togglePlatform(id) {
@@ -218,11 +266,43 @@ export default function PublishPage() {
     threads: Boolean(tokens.threads),
   };
 
+  // Where a post goes for a platform: the account name/username, its id, and a
+  // best-effort profile URL. Used to show the destination under each platform so
+  // it's clear which account/channel/page will receive the post.
+  //  - Facebook lists Pages separately (multiple targets), so it's handled there.
+  //  - Instagram's target is the chosen IG account (may differ from FB).
+  function destinationFor(id) {
+    if (id === "instagram") {
+      const acc =
+        igAccounts.find((a) => a.id === selectedIgId) || igAccounts[0];
+      if (!acc) return null;
+      const name = acc.username ? `@${acc.username}` : acc.name || acc.id;
+      return {
+        name,
+        subId: acc.id,
+        url: acc.username ? `https://instagram.com/${acc.username}` : null,
+      };
+    }
+    const meta = accountMeta[id];
+    if (!meta) return null;
+    const name = meta.platformName || id;
+    const pid = meta.platformId;
+    let url = null;
+    if (id === "youtube" && pid) url = `https://youtube.com/channel/${pid}`;
+    // LinkedIn (member sub) and Threads (numeric user id) have no clean public
+    // profile URL derivable from the id we store, so we show the id only.
+    return { name, subId: pid, url };
+  }
+
   const hasVideo = Boolean(video);
   const hasText = text.trim().length > 0;
   const hasMediaUrl = mediaUrl.trim().length > 0;
-  // Treat a media URL as a video when it looks like one, else as an image.
-  const mediaUrlIsVideo = /\.(mp4|mov|m4v|webm)(\?|$)/i.test(mediaUrl.trim());
+  // Prefer Cloudinary's resource type (authoritative); fall back to the URL
+  // extension for any URL that didn't come through our uploader.
+  const mediaUrlIsVideo =
+    mediaResourceType === "video" ||
+    (mediaResourceType == null &&
+      /\.(mp4|mov|m4v|webm)(\?|$)/i.test(mediaUrl.trim()));
 
   // Which targets will actually run: selected + connected.
   //  - YouTube only runs when a video is present (no text-only mode).
@@ -248,6 +328,7 @@ export default function PublishPage() {
     selected.youtube && connected.youtube && hasVideo && !ytTitle.trim();
   const canPublish =
     !publishing &&
+    !uploading &&
     activeTargets.length > 0 &&
     hasContent &&
     !fbNeedsPage &&
@@ -408,6 +489,7 @@ export default function PublishPage() {
     setText("");
     clearImage();
     clearVideo();
+    clearMediaUrl();
     setYtTitle("");
     setImagePrompt("");
     setGenError("");
@@ -466,12 +548,44 @@ export default function PublishPage() {
                   (!isConnected ? " cursor-not-allowed opacity-40" : "")
                 }
               >
-                <Icon className={"h-5 w-5 " + accent} />
+                <Icon className={"h-5 w-5 shrink-0 " + accent} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-white">{label}</p>
-                  <p className="text-xs text-slate-500">
-                    {isConnected ? (isOn ? "Selected" : "Off") : "Not connected"}
-                  </p>
+                  {isConnected ? (
+                    id === "facebook" ? (
+                      // Facebook targets the selected Pages, listed below.
+                      <p className="truncate text-xs text-slate-400">
+                        {isOn
+                          ? selectedPageIds.length > 0
+                            ? `${selectedPageIds.length} Page${
+                                selectedPageIds.length > 1 ? "s" : ""
+                              } selected`
+                            : "Pick Pages below"
+                          : "Off"}
+                      </p>
+                    ) : (
+                      (() => {
+                        const dest = destinationFor(id);
+                        if (!isOn) return <p className="text-xs text-slate-500">Off</p>;
+                        if (!dest)
+                          return <p className="text-xs text-slate-500">Selected</p>;
+                        return (
+                          <>
+                            <p className="truncate text-xs text-slate-300">
+                              → {dest.name}
+                            </p>
+                            {dest.subId && (
+                              <p className="truncate text-[11px] text-slate-500">
+                                ID: {dest.subId}
+                              </p>
+                            )}
+                          </>
+                        );
+                      })()
+                    )
+                  ) : (
+                    <p className="text-xs text-slate-500">Not connected</p>
+                  )}
                 </div>
                 <span
                   className={
@@ -485,6 +599,63 @@ export default function PublishPage() {
             );
           })}
         </div>
+
+        {/* Post destinations — a clear "where does this go?" summary for every
+            selected+connected platform, with the account name, its id, and a
+            clickable profile URL where we can derive one. Facebook is shown per
+            selected Page. */}
+        {activeTargets.length > 0 && (
+          <div className="mb-6 rounded-xl border border-white/10 bg-white/5 p-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Posting to these accounts
+            </p>
+            <div className="space-y-2">
+              {activeTargets.map(({ id, label, Icon, accent }) => {
+                // Facebook: one row per selected Page.
+                if (id === "facebook") {
+                  const pages = fbPages.filter((p) =>
+                    selectedPageIds.includes(p.id)
+                  );
+                  return pages.map((p) => (
+                    <div key={`fb-${p.id}`} className="flex items-center gap-3">
+                      <Icon className={"h-4 w-4 shrink-0 " + accent} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-white">{p.name}</p>
+                        <p className="truncate text-xs text-slate-500">
+                          {label} Page · ID: {p.id}
+                        </p>
+                      </div>
+                    </div>
+                  ));
+                }
+                const dest = destinationFor(id);
+                if (!dest) return null;
+                return (
+                  <div key={id} className="flex items-center gap-3">
+                    <Icon className={"h-4 w-4 shrink-0 " + accent} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm text-white">{dest.name}</p>
+                      <p className="truncate text-xs text-slate-500">
+                        {label}
+                        {dest.subId ? ` · ID: ${dest.subId}` : ""}
+                      </p>
+                    </div>
+                    {dest.url && (
+                      <a
+                        href={dest.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="shrink-0 text-xs font-medium text-sky-400 underline decoration-sky-400/40 underline-offset-2 hover:decoration-sky-400"
+                      >
+                        View
+                      </a>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Facebook Page picker */}
         {selected.facebook && connected.facebook && (
@@ -621,22 +792,38 @@ export default function PublishPage() {
             ))}
         </div>
 
-        {/* Public media URL — the only way Instagram (and Threads media) can
-            receive an image/video, since they fetch it by URL. Optional. */}
+        {/* Instagram/Threads media — auto-uploaded to Cloudinary. Instagram and
+            Threads fetch media by URL rather than accepting an upload, so when a
+            file is attached above we upload it and use the returned public URL.
+            No manual paste needed. Shows the upload status here. */}
         {((selected.instagram && connected.instagram) ||
           (selected.threads && connected.threads)) && (
           <div className="mt-4">
             <label className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-pink-400">
-              <FiLink className="h-3.5 w-3.5" /> Public media URL (for Instagram
-              / Threads)
+              <FiLink className="h-3.5 w-3.5" /> Instagram / Threads media
             </label>
-            <input
-              type="url"
-              value={mediaUrl}
-              onChange={(e) => setMediaUrl(e.target.value)}
-              placeholder="https://example.com/photo.jpg  (image or .mp4 video)"
-              className="field w-full text-sm"
-            />
+            {uploading ? (
+              <p className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300">
+                <FiLoader className="h-4 w-4 animate-spin" /> Uploading media…
+              </p>
+            ) : uploadError ? (
+              <p className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-sm text-rose-200">
+                Upload failed: {uploadError}
+              </p>
+            ) : hasMediaUrl ? (
+              <p className="inline-flex max-w-full items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-200">
+                <FiCheck className="h-4 w-4 shrink-0" />
+                <span className="truncate">
+                  Media ready ({mediaResourceType || "file"}) — will be sent to
+                  Instagram / Threads
+                </span>
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500">
+                Add an image or video above — it&apos;s uploaded automatically
+                and sent to Instagram / Threads.
+              </p>
+            )}
             {selected.instagram && connected.instagram && igAccounts.length > 1 && (
               <select
                 value={selectedIgId}
@@ -684,15 +871,14 @@ export default function PublishPage() {
         ) : null}
         {selected.instagram && connected.instagram && !hasMediaUrl && (
           <p className="mt-1.5 text-xs text-slate-500">
-            Instagram needs a public media URL (it can&apos;t use uploaded files
-            and has no text-only post) — it&apos;s skipped until you add one
-            above.
+            Instagram needs media (it has no text-only post) — add an image or
+            video above and it&apos;s uploaded automatically. Skipped until then.
           </p>
         )}
         {selected.threads && connected.threads && (
           <p className="mt-1.5 text-xs text-slate-500">
-            Threads posts your text, plus the public media URL if you add one
-            (uploaded files can&apos;t be forwarded to Threads).
+            Threads posts your text, plus any image/video you attach (uploaded
+            automatically and sent by URL).
           </p>
         )}
 
