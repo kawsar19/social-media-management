@@ -215,7 +215,7 @@ export default function ManagePage() {
                   style={{ "--i": index }}
                   className="glass glass-hover rounded-2xl p-5"
                 >
-                  <div className="flex gap-4">
+                  <div className="flex flex-col gap-4 sm:flex-row">
                   {post.picture && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img

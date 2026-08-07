@@ -175,9 +175,9 @@ export default function YouTubeInsightsPage() {
                 {daily.map((d) => (
                   <div
                     key={d.date}
-                    className="flex items-center gap-3 text-xs"
+                    className="flex items-center gap-2 text-xs sm:gap-3"
                   >
-                    <span className="tabular w-24 flex-shrink-0 text-slate-500">
+                    <span className="tabular w-16 flex-shrink-0 text-slate-500 sm:w-24">
                       {d.date}
                     </span>
                     <div className="h-4 flex-1 overflow-hidden rounded-full bg-white/10">
@@ -193,7 +193,7 @@ export default function YouTubeInsightsPage() {
                     <span className="tabular w-16 flex-shrink-0 text-right font-medium text-white">
                       {fmtNum(d.views)}
                     </span>
-                    <span className="tabular w-24 flex-shrink-0 text-right text-slate-500">
+                    <span className="tabular hidden w-24 flex-shrink-0 text-right text-slate-500 sm:block">
                       {fmtNum(d.estimatedMinutesWatched)} min
                     </span>
                   </div>

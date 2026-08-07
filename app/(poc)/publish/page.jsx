@@ -637,7 +637,7 @@ export default function PublishPage() {
       </div>
 
       {!anyConnected && (
-        <div className="mb-6 flex items-center justify-between rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-amber-200">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-amber-200">
           <p className="pretty text-sm">No accounts connected yet.</p>
           <Link href="/connect" className="btn btn-primary">
             Go to Connect

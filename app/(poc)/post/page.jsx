@@ -491,7 +491,7 @@ export default function PostPage() {
       </div>
 
       {/* Platform selector — segmented control on a glass pill */}
-      <div className="mb-6 inline-flex gap-1 rounded-full glass p-1">
+      <div className="mb-6 flex flex-wrap gap-1 rounded-3xl glass p-1 sm:inline-flex sm:rounded-full">
         <button
           onClick={() => setPlatform("linkedin")}
           className={
@@ -867,7 +867,7 @@ export default function PostPage() {
                   </button>
                 </div>
               ) : (
-                <label className="group flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-white/15 bg-white/5 p-12 text-center transition-colors hover:border-rose-400/50 hover:bg-rose-400/10">
+                <label className="group flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-white/15 bg-white/5 p-8 text-center transition-colors hover:border-rose-400/50 hover:bg-rose-400/10 sm:p-12">
                   <span className="transition-transform group-hover:scale-110">
                     <FiVideo className="h-6 w-6" />
                   </span>

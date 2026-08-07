@@ -92,7 +92,7 @@ export default function YouTubePage() {
         </div>
 
         {!connected && (
-          <div className="mb-6 flex items-center justify-between rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-amber-200">
+          <div className="mb-6 flex flex-col items-start gap-3 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-amber-200 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm">No YouTube channel connected yet.</p>
             <Link href="/connect" className="btn btn-primary">
               Go to Connect
@@ -101,7 +101,7 @@ export default function YouTubePage() {
         )}
 
         {connected && channel && (
-          <div className="glass relative mb-6 flex items-center justify-between overflow-hidden rounded-2xl p-6">
+          <div className="glass relative mb-6 flex flex-col gap-4 overflow-hidden rounded-2xl p-6 sm:flex-row sm:items-center sm:justify-between">
             <div
               aria-hidden
               className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-rose-500/20 blur-3xl"
