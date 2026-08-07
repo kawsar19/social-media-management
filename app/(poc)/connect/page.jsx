@@ -21,7 +21,12 @@ import {
 } from "../lib/socialTokens";
 
 const LINKEDIN_CLIENT_ID = "869sxzia2ogeui";
-const REDIRECT_URI = "http://localhost:3001/api/auth/linkedin/callback";
+// Public redirect URI — read from env so the same code works on localhost and on
+// the deployed (Vercel) host. It must match LINKEDIN_REDIRECT_URI the callback
+// route uses AND the URI registered in the LinkedIn app console (exact match).
+const REDIRECT_URI =
+  process.env.NEXT_PUBLIC_LINKEDIN_REDIRECT_URI ||
+  "http://localhost:3001/api/auth/linkedin/callback";
 const SCOPE = "openid profile email w_member_social";
 
 function buildLinkedInAuthUrl() {
@@ -40,7 +45,11 @@ function buildLinkedInAuthUrl() {
 // client. The App Secret stays server-side in .env.local and is only used by
 // the callback route to exchange the code for a token.
 const FB_APP_ID = "1363634801765963";
-const FB_REDIRECT_URI = "http://localhost:3001/api/auth/facebook/callback";
+// Public redirect URI from env (localhost fallback for dev). Must match
+// FACEBOOK_REDIRECT_URI the callback route uses and the URI registered in Meta.
+const FB_REDIRECT_URI =
+  process.env.NEXT_PUBLIC_FACEBOOK_REDIRECT_URI ||
+  "http://localhost:3001/api/auth/facebook/callback";
 const FB_SCOPE =
   "public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,business_management,instagram_basic,instagram_content_publish";
 const FB_GRAPH_VERSION = "v25.0";
@@ -59,7 +68,11 @@ function buildFacebookAuthUrl() {
 // YouTube = Google OAuth. The Client ID is public (exposed via NEXT_PUBLIC_*);
 // the Client Secret stays server-side and is only used by the callback route.
 const YT_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
-const YT_REDIRECT_URI = "http://localhost:3001/api/auth/youtube/callback";
+// Public redirect URI from env (localhost fallback for dev). Must match
+// YOUTUBE_REDIRECT_URI the callback route uses and the URI registered in Google.
+const YT_REDIRECT_URI =
+  process.env.NEXT_PUBLIC_YOUTUBE_REDIRECT_URI ||
+  "http://localhost:3001/api/auth/youtube/callback";
 // Scopes: readonly (channel/videos) + force-ssl (comment reply) +
 // yt-analytics.readonly (analytics) + upload (publish videos). Note: on an
 // unverified Google app, videos uploaded with youtube.upload are forced to
