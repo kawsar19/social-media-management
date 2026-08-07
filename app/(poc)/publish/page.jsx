@@ -14,6 +14,8 @@ import { filterEnabledPages } from "../lib/enabledPages";
 import { getAccountsMap, getYouTubeToken, uploadMedia } from "../lib/socialTokens";
 import { generateImageFile } from "../lib/imageGeneration";
 import { createPost, publishPost } from "../lib/posts";
+import LinkedInFormatter from "../components/LinkedInFormatter";
+import LinkedInPreview from "../components/LinkedInPreview";
 
 // The target platforms, in the order they publish (sequential).
 const PLATFORMS = [
@@ -612,15 +614,26 @@ export default function PublishPage() {
     runs && Object.values(runs).every((r) => r.status !== STATUS.running && r.status !== STATUS.pending);
 
   return (
-    <div className="rise-in mx-auto max-w-3xl px-6 py-10">
-      <div className="mb-8">
-        <h1 className="balance text-4xl font-bold tracking-tight text-white">
-          Publish Everywhere
-        </h1>
-        <p className="pretty mt-3 text-slate-400">
-          Write once, publish to all your connected accounts — one after another,
-          with live progress.
-        </p>
+    <div className="rise-in mx-auto max-w-6xl px-6 py-10">
+      <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-semibold text-sky-500">
+            <FiZap className="h-3.5 w-3.5" /> Composer
+          </span>
+          <h1 className="balance text-4xl font-bold tracking-tight text-white">
+            Publish Everywhere
+          </h1>
+          <p className="pretty mt-2 max-w-xl text-slate-400">
+            Write once, publish to all your connected accounts — one after
+            another, with live progress.
+          </p>
+        </div>
+        {anyConnected && (
+          <span className="hidden items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300 sm:inline-flex">
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            {Object.values(connected).filter(Boolean).length} connected
+          </span>
+        )}
       </div>
 
       {!anyConnected && (
@@ -632,6 +645,7 @@ export default function PublishPage() {
         </div>
       )}
 
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
       <div className="glass rounded-2xl p-6">
         {/* Platform picker */}
         <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -795,14 +809,21 @@ export default function PublishPage() {
           </div>
         )}
 
-        {/* Shared content */}
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={5}
-          placeholder="What do you want to share everywhere?"
-          className="field w-full resize-none"
-        />
+        {/* Shared content. When LinkedIn is a target, show the LinkedIn
+            formatter (Unicode bold/italic, lists, hooks) over the same `text`
+            state so styled content publishes straight through. Otherwise a
+            plain textarea. */}
+        {selected.linkedin ? (
+          <LinkedInFormatter value={text} onChange={setText} />
+        ) : (
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={5}
+            placeholder="What do you want to share everywhere?"
+            className="field w-full resize-none"
+          />
+        )}
 
         {/* AI image generation — type a prompt, get an image set as the post
             image. Hidden while a video is attached (image and video are
@@ -1076,6 +1097,18 @@ export default function PublishPage() {
             })}
           </div>
         )}
+      </div>
+
+        {/* Right column: live preview, sticky so it follows while you scroll the
+            controls. Shows the LinkedIn card whenever there's content. */}
+        <div className="lg:sticky lg:top-6 lg:self-start">
+          <LinkedInPreview
+            text={text}
+            authorName={accountMeta.linkedin?.platformName || "Your Name"}
+            mediaUrl={mediaUrl || preview || ""}
+            mediaType={mediaResourceType || (preview ? "image" : null)}
+          />
+        </div>
       </div>
 
       <p className="pretty mt-6 text-sm text-slate-500">

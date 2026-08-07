@@ -25,6 +25,26 @@ function authHeaders() {
   return jwt ? { Authorization: `Bearer ${jwt}` } : {};
 }
 
+// Called when an authenticated request comes back 401 — i.e. the app JWT is
+// missing/expired/invalid. We wipe the stored auth (so the guard in the layout
+// stops treating the user as logged in) and send them to /login to get a fresh
+// token. Without this, an expired token leaves the app stuck: it thinks you're
+// logged in (localStorage still has an object) while every API call fails, so
+// everything reads as "Not Connected" instead of prompting a re-login.
+function clearAuthAndRedirect() {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(AUTH_KEY);
+  } catch {
+    // ignore storage errors
+  }
+  const here = window.location.pathname + window.location.search;
+  // Avoid redirect loops if we're already on the login page.
+  if (!window.location.pathname.startsWith("/login")) {
+    window.location.href = `/login?redirect=${encodeURIComponent(here)}`;
+  }
+}
+
 // All connected accounts for the logged-in user: [{ platform, platformId,
 // platformName, accessToken, expiresAt, ... }]. Returns [] when logged out.
 export async function fetchAccounts() {
@@ -34,6 +54,12 @@ export async function fetchAccounts() {
     headers: authHeaders(),
     cache: "no-store",
   });
+  // A stored-but-expired/invalid JWT: log the user out and re-prompt instead of
+  // silently showing everything as "Not Connected".
+  if (res.status === 401) {
+    clearAuthAndRedirect();
+    return [];
+  }
   if (!res.ok) return [];
   const data = await res.json().catch(() => ({}));
   return Array.isArray(data.accounts) ? data.accounts : [];
