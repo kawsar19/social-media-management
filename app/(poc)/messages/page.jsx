@@ -269,7 +269,12 @@ export default function MessagesPage() {
           ) : (
             <div className="glass overflow-hidden rounded-2xl">
               {threads.map((th, i) => (
-                <ThreadRow key={th.id} thread={th} last={i === threads.length - 1} />
+                <ThreadRow
+                  key={th.id}
+                  thread={th}
+                  pageId={pageId}
+                  last={i === threads.length - 1}
+                />
               ))}
               {/* Infinite-scroll sentinel + status */}
               <div ref={sentinelRef} />
@@ -289,9 +294,15 @@ export default function MessagesPage() {
   );
 }
 
-function ThreadRow({ thread, last }) {
+function ThreadRow({ thread, pageId, last }) {
+  // pageId and name ride along in the query string so the thread view can fetch
+  // immediately and render a title before its own request resolves.
+  const href = `/messages/${encodeURIComponent(thread.id)}?pageId=${encodeURIComponent(
+    pageId || ""
+  )}&name=${encodeURIComponent(thread.name || "")}`;
   return (
-    <div
+    <Link
+      href={href}
       className={
         "flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/5 " +
         (last ? "" : "border-b border-white/5")
@@ -321,6 +332,6 @@ function ThreadRow({ thread, last }) {
           {thread.snippet || <span className="italic text-slate-600">(no text)</span>}
         </p>
       </div>
-    </div>
+    </Link>
   );
 }

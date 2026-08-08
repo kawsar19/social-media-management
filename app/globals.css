@@ -324,6 +324,31 @@ body {
   --tw-gradient-from: var(--text-strong) var(--tw-gradient-from-position) !important;
 }
 
+/* Status notices (amber warnings, rose errors, emerald success) are authored
+   dark-first: pale 200/300 text on a translucent 400/10 tint. That tint sits on
+   a light surface in this theme, so the pale text loses nearly all contrast.
+   Remap to the deep shades, which read clearly on the same tint. */
+:root[data-theme="light"] .text-amber-200,
+:root[data-theme="light"] .text-amber-300 {
+  color: #92400e !important; /* amber-800 */
+}
+:root[data-theme="light"] .text-rose-200,
+:root[data-theme="light"] .text-rose-300 {
+  color: #9f1239 !important; /* rose-800 */
+}
+:root[data-theme="light"] .text-emerald-200,
+:root[data-theme="light"] .text-emerald-300 {
+  color: #065f46 !important; /* emerald-800 */
+}
+:root[data-theme="light"] .text-indigo-200,
+:root[data-theme="light"] .text-indigo-300 {
+  color: #3730a3 !important; /* indigo-800 */
+}
+/* The secondary explanatory line inside those notices. */
+:root[data-theme="light"] .text-rose-200\/80 {
+  color: rgba(159, 18, 57, 0.85) !important;
+}
+
 /* ============================================================
    Motion.
    ============================================================ */
