@@ -357,7 +357,12 @@ export default function InboxPage() {
                 )}
               </p>
               {visible.map((it, index) => (
-                <ActivityCard key={it.id} item={it} index={index} />
+                <ActivityCard
+                  key={it.id}
+                  item={it}
+                  index={index}
+                  fbToken={fbToken}
+                />
               ))}
             </div>
           )}
@@ -389,11 +394,70 @@ function FilterChip({ active, onClick, label, count, Icon, iconClass }) {
   );
 }
 
-function ActivityCard({ item, index }) {
+function ActivityCard({ item, index, fbToken }) {
   const p = PLATFORMS[item.platform] || {};
   const t = TYPES[item.type] || {};
   const { Icon: PlatformIcon } = p;
   const { Icon: TypeIcon } = t;
+
+  // Facebook replies come in two flavours, each with its own backend route:
+  //  - comment -> POST /api/auth/facebook/comments (nested reply)
+  //  - message -> POST /api/auth/facebook/messages (DM back to the sender;
+  //    needs pages_messaging + the 24h messaging window to actually send)
+  const canReplyComment =
+    item.platform === "facebook" &&
+    item.type === "comment" &&
+    Boolean(fbToken && item.pageId && item.commentId);
+  const canReplyMessage =
+    item.platform === "facebook" &&
+    item.type === "message" &&
+    Boolean(fbToken && item.pageId && item.recipientId);
+  const canReply = canReplyComment || canReplyMessage;
+
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
+  // Once a reply lands we swap the composer for a small confirmation instead of
+  // trying to splice the new reply into the fetched feed.
+  const [sent, setSent] = useState(false);
+
+  const sendReply = async () => {
+    const message = draft.trim();
+    if (!message || sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      const endpoint = canReplyMessage
+        ? "/api/auth/facebook/messages"
+        : "/api/auth/facebook/comments";
+      const payload = canReplyMessage
+        ? { pageId: item.pageId, recipientId: item.recipientId, message }
+        : {
+            pageId: item.pageId,
+            postId: item.postId,
+            commentId: item.commentId, // reply nested under this comment
+            message,
+          };
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${fbToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "reply_failed");
+      setSent(true);
+      setDraft("");
+      setOpen(false);
+    } catch (e) {
+      setError(e.message || "Reply failed");
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <div
@@ -432,7 +496,62 @@ function ActivityCard({ item, index }) {
               Open
             </a>
           )}
+          {canReply && !sent && (
+            <button
+              onClick={() => setOpen((v) => !v)}
+              className="text-slate-300 underline hover:text-white"
+            >
+              {open ? "Cancel" : canReplyMessage ? "Reply in DM" : "Reply"}
+            </button>
+          )}
         </div>
+
+        {sent && (
+          <p className="mt-2 text-xs text-emerald-400">
+            ✓ {canReplyMessage ? "Message sent." : "Reply sent."}
+          </p>
+        )}
+
+        {canReply && open && !sent && (
+          <div className="mt-2.5">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              rows={2}
+              placeholder={
+                canReplyMessage
+                  ? `Message ${item.author}…`
+                  : `Reply to ${item.author}…`
+              }
+              disabled={sending}
+              className="field w-full resize-y text-sm"
+            />
+            {error && <p className="mt-1 text-xs text-rose-400">{error}</p>}
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                onClick={sendReply}
+                disabled={sending || !draft.trim()}
+                className="btn btn-primary"
+              >
+                {sending
+                  ? "Sending…"
+                  : canReplyMessage
+                    ? "Send message"
+                    : "Send reply"}
+              </button>
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  setError(null);
+                }}
+                disabled={sending}
+                className="btn btn-ghost"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

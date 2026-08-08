@@ -52,6 +52,10 @@ const FB_REDIRECT_URI =
   "http://localhost:3001/api/auth/facebook/callback";
 const FB_SCOPE =
   "public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,business_management,instagram_basic,instagram_content_publish";
+// Messaging scopes (add back once activated in the Meta app dashboard —
+// App Review > Permissions/Use cases): pages_messaging, pages_manage_metadata,
+// instagram_manage_messages. Requesting them before they're added to the app
+// causes an "Invalid Scopes" error and blocks the whole login.
 const FB_GRAPH_VERSION = "v25.0";
 
 function buildFacebookAuthUrl() {
@@ -754,9 +758,9 @@ export default function ConnectPage() {
   const progressPct = Math.round((connectedCount / platforms.length) * 100);
 
   return (
-    <div className="rise-in mx-auto max-w-6xl px-6 py-10">
+    <div className="rise-in mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
       {/* Hero header */}
-      <header className="glass relative mb-10 overflow-hidden rounded-3xl p-8 sm:p-10">
+      <header className="glass relative mb-6 overflow-hidden rounded-3xl p-6 sm:mb-10 sm:p-10">
         <div
           aria-hidden
           className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-gradient-to-br from-indigo-500/25 via-sky-500/15 to-transparent blur-3xl"
@@ -774,7 +778,7 @@ export default function ConnectPage() {
             Integrations hub
           </span>
 
-          <h1 className="balance mt-4 text-4xl font-bold text-white sm:text-5xl">
+          <h1 className="balance mt-4 text-3xl font-bold text-white sm:text-5xl">
             Connect Social Accounts
           </h1>
 
@@ -807,7 +811,7 @@ export default function ConnectPage() {
             <div
               key={platform.name}
               style={{ "--i": index }}
-              className={`glass glass-hover group relative overflow-hidden rounded-2xl p-6 ${
+              className={`glass glass-hover group relative overflow-hidden rounded-2xl p-5 sm:p-6 ${
                 platform.connected ? `ring-1 ${accent.ring}` : ""
               }`}
             >
@@ -817,10 +821,10 @@ export default function ConnectPage() {
                   platform.connected ? "opacity-100" : ""
                 }`}
               />
-              <div className="relative flex items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
+              <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-4">
                   <div
-                    className={`flex h-14 w-14 items-center justify-center rounded-xl border text-3xl ${accent.tile}`}
+                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border text-3xl sm:h-14 sm:w-14 ${accent.tile}`}
                   >
                     <Icon className="h-6 w-6" />
                   </div>
@@ -850,7 +854,7 @@ export default function ConnectPage() {
                 {platform.connected ? (
                   <button
                     onClick={platform.onDisconnect}
-                    className="btn btn-danger shrink-0"
+                    className="btn btn-danger w-full shrink-0 sm:w-auto"
                   >
                     Disconnect
                   </button>
@@ -858,7 +862,7 @@ export default function ConnectPage() {
                   <button
                     onClick={platform.onConnect}
                     disabled={!platform.onConnect}
-                    className="btn btn-primary shrink-0"
+                    className="btn btn-primary w-full shrink-0 sm:w-auto"
                   >
                     Connect
                   </button>
@@ -1105,7 +1109,7 @@ export default function ConnectPage() {
                     (developers.facebook.com → your app → Threads API → Generate
                     access token), then paste it here.
                   </p>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     <input
                       type="text"
                       placeholder="Paste Threads access token…"
@@ -1122,7 +1126,7 @@ export default function ConnectPage() {
                         );
                         if (el) saveThreadsToken(el.value);
                       }}
-                      className="btn btn-primary shrink-0"
+                      className="btn btn-primary w-full shrink-0 sm:w-auto"
                     >
                       Save
                     </button>

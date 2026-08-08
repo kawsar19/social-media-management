@@ -126,6 +126,10 @@ async function fetchComments(pageId, pageToken, since) {
         timestamp: c.created_time || null,
         permalink: c.permalink_url || post.permalink_url || null,
         context: postText ? `on post: "${postText}"` : "on a post",
+        // IDs the inbox needs to reply via POST /api/auth/facebook/comments.
+        pageId,
+        postId: post.id,
+        commentId: c.id,
       }));
     })
   );
@@ -180,15 +184,21 @@ async function fetchMessages(pageId, pageToken) {
   }
   return (data.data || []).map((conv) => {
     const msg = conv.messages?.data?.[0];
+    // The person to reply to = the participant that isn't the Page itself.
+    // Their id is the PSID we send to via POST /{pageId}/messages.
+    const other = (conv.participants?.data || []).find((pp) => pp.id !== pageId);
     return {
       id: `fb_msg_${conv.id}`,
       platform: "facebook",
       type: "message",
-      author: msg?.from?.name || "Facebook user",
+      author: msg?.from?.name || other?.name || "Facebook user",
       text: msg?.message || "",
       timestamp: msg?.created_time || conv.updated_time || null,
       permalink: null,
       context: "direct message",
+      // IDs the inbox needs to reply via POST /api/auth/facebook/messages.
+      pageId,
+      recipientId: other?.id || null,
     };
   });
 }
