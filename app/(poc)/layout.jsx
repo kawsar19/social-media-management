@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AuthProvider, useAuth } from "./components/AuthProvider";
 import Navbar from "./components/Navbar";
+import AppShell from "./components/AppShell";
 
 const PUBLIC_ROUTES = ["/login", "/signup"];
 
@@ -18,7 +19,7 @@ function AuthRedirect({ children }) {
       router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
     }
     if (user && isPublic) {
-      router.replace("/post");
+      router.replace("/dashboard");
     }
   }, [user, pathname, router]);
 
@@ -31,7 +32,7 @@ export default function PocLayout({ children }) {
       <div className="app-shell flex flex-1 flex-col">
         <Navbar />
         <AuthRedirect>
-          <main className="flex-1">{children}</main>
+          <AppShell>{children}</AppShell>
         </AuthRedirect>
       </div>
     </AuthProvider>
