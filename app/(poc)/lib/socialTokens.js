@@ -136,10 +136,12 @@ export async function getYouTubeToken() {
   return data.accessToken;
 }
 
-// Upload a File (image or video) to Cloudinary via /api/upload and get back a
-// public https URL. Instagram and Threads fetch media by URL rather than
-// accepting uploaded files, so this turns a local file pick into a URL they can
-// consume. Returns { url, resourceType } or throws with a reason.
+// Upload a File (image or video) to R2 via /api/upload and get back a public
+// https URL. Instagram and Threads fetch media by URL rather than accepting
+// uploaded files, so this turns a local file pick into a URL they can consume.
+// A video URL is short-lived — the publish route deletes the object once
+// publishing is done; image URLs are kept so saved posts keep their preview.
+// Returns { url, resourceType } or throws with a reason.
 export async function uploadMedia(file) {
   const jwt = getAppToken();
   if (!jwt) throw new Error("not_logged_in");

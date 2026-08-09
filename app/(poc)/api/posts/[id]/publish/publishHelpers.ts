@@ -1,4 +1,5 @@
 import SocialAccount from "@/lib/models/SocialAccount";
+import { deleteFromR2, r2KeyFromUrl } from "@/lib/r2";
 
 // Server-side helpers for publishing a saved Post to each social platform.
 //
@@ -6,7 +7,7 @@ import SocialAccount from "@/lib/models/SocialAccount";
 // reads the SocialAccount collection directly to get each platform's token, and
 // refreshes YouTube's ~1h access token the same way /api/auth/youtube/token
 // does. File-upload platforms (LinkedIn/Facebook/YouTube) need the raw media
-// bytes, so we download the stored Cloudinary URL into a Blob on demand.
+// bytes, so we download the staged R2 URL into a Blob on demand.
 
 const EXPIRY_SKEW_MS = 60 * 1000;
 
@@ -62,6 +63,41 @@ export async function fetchMediaBlob(mediaUrl?: string) {
   } catch {
     return null;
   }
+}
+
+// How long to leave the staged media in R2 after publishing finishes.
+//
+// Instagram and Threads fetch the media themselves, and their share routes
+// return as soon as the container is created — the actual fetch can still be in
+// flight. Deleting immediately would race that fetch and show up as a failed
+// post on their side, so we hold the object for a few minutes first.
+const MEDIA_CLEANUP_DELAY_MS = 3 * 60 * 1000;
+
+// Delete a post's staged R2 video once the platforms have had time to fetch it.
+// Call inside Next's `after()` so it runs off the response — the delay is
+// bounded by the route's maxDuration.
+//
+// Videos only: they're what actually costs storage, and every platform either
+// re-hosts the file or holds its own copy after publishing. Images are kept so
+// the saved post still renders a preview on /profile/posts — deleting them
+// would leave every published post with a broken thumbnail.
+//
+// Only deletes objects under our own R2 public base (r2KeyFromUrl returns null
+// for anything else), so a post whose mediaUrl points somewhere external is
+// left alone. Never throws: cleanup is best-effort and must not affect an
+// already-completed publish. Objects that survive a cold start or timeout are
+// swept by the bucket's lifecycle rule.
+export async function scheduleMediaCleanup(
+  mediaUrl?: string,
+  mediaType?: string
+) {
+  if (mediaType !== "video") return;
+  const key = r2KeyFromUrl(mediaUrl);
+  if (!key) return;
+
+  await new Promise((resolve) => setTimeout(resolve, MEDIA_CLEANUP_DELAY_MS));
+  const deleted = await deleteFromR2(key);
+  if (deleted) console.log("[r2] cleaned up staged video", key);
 }
 
 // Build a public permalink for a published post where the platform id lets us

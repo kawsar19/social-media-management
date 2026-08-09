@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { connectDB } from "@/lib/db";
 import Post from "@/lib/models/Post";
 import { getUser } from "../../postSchema";
@@ -6,6 +6,7 @@ import {
   resolvePlatformToken,
   fetchMediaBlob,
   permalinkFor,
+  scheduleMediaCleanup,
 } from "./publishHelpers";
 
 // POST /api/posts/[id]/publish
@@ -15,13 +16,18 @@ import {
 // the platform token from the DB (refreshing YouTube when needed) and call that
 // platform's existing share route with an absolute URL, so all the tested
 // per-platform logic is reused. File-upload platforms (LinkedIn/Facebook/
-// YouTube) get the media re-uploaded as bytes downloaded from the stored
-// Cloudinary URL; Instagram/Threads get that URL directly.
+// YouTube) get the media re-uploaded as bytes downloaded from the stored R2
+// URL; Instagram/Threads get that URL directly.
 //
 // Each target's result (status, platformPostId, permalink, error) is written
 // back to post.targets, and the post's overall status becomes published /
 // partial / failed.
+//
+// R2 is staging, not storage: once publishing is done the staged object is
+// deleted (after a delay — see scheduleMediaCleanup) so nothing lingers.
 
+// Covers the publish itself plus the delayed R2 cleanup that runs in `after`,
+// which shares this route's budget.
 export const maxDuration = 300;
 
 // A media Blob is only fetched once and shared across file-upload targets.
@@ -226,6 +232,16 @@ export async function POST(request: NextRequest, { params }: { params: any }) {
     if (successes > 0 && !post.publishedAt) post.publishedAt = new Date();
 
     await post.save();
+
+    // Every target has been attempted, so the staged video has served its
+    // purpose — drop it after the response, once the URL-fetching platforms
+    // have had time to pull it. Images are kept so the saved post still renders
+    // a preview. Runs on failures too: a failed publish leaves the same
+    // orphaned object behind.
+    const stagedMediaUrl = post.mediaUrl;
+    const stagedMediaType = post.mediaType;
+    after(() => scheduleMediaCleanup(stagedMediaUrl, stagedMediaType));
+
     return NextResponse.json({ post });
   } catch {
     return NextResponse.json({ error: "server_error" }, { status: 500 });

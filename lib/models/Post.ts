@@ -35,7 +35,10 @@ export interface IPostTarget {
 export interface IPost extends Document {
   userId: mongoose.Types.ObjectId;
   content: string;
-  mediaUrl?: string; // Cloudinary URL (used by IG/Threads and as a preview)
+  // R2 URL (used by IG/Threads and as a preview). Videos are deleted from R2
+  // after publishing, so this can point at an object that no longer exists when
+  // mediaType is "video"; images are kept.
+  mediaUrl?: string;
   mediaType?: "image" | "video"; // what mediaUrl points at
   // YouTube-specific fields (only meaningful when a video target is present).
   youtubeTitle?: string;

@@ -61,9 +61,11 @@ export default function PublishPage() {
   // Public https media URL — the only way Instagram (and Threads) can take
   // media, since they fetch it by URL rather than accepting an upload. This is
   // filled automatically: when the user picks/generates an image or picks a
-  // video, we upload it to Cloudinary and store the returned URL here. No manual
-  // paste needed. resourceType ("image" | "video") comes from Cloudinary so we
-  // route the URL to the right IG/Threads field.
+  // video, we upload it to R2 and store the returned URL here. No manual paste
+  // needed. resourceType ("image" | "video") comes from the upload so we route
+  // the URL to the right IG/Threads field. Videos are staging only — the
+  // publish route deletes them from R2 once every platform has fetched them;
+  // images are kept so the saved post keeps its preview.
   const [mediaUrl, setMediaUrl] = useState("");
   const [mediaResourceType, setMediaResourceType] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -176,7 +178,7 @@ export default function PublishPage() {
     };
   }, [selected.instagram, tokens.facebook]);
 
-  // Upload the picked/generated file to Cloudinary and stash the public URL +
+  // Upload the picked/generated file to R2 and stash the public URL +
   // resource type. Instagram/Threads publish off mediaUrl, so this is what makes
   // a local file usable on those platforms without any manual URL paste.
   async function uploadForMedia(file) {
@@ -304,7 +306,7 @@ export default function PublishPage() {
   const hasVideo = Boolean(video);
   const hasText = text.trim().length > 0;
   const hasMediaUrl = mediaUrl.trim().length > 0;
-  // Prefer Cloudinary's resource type (authoritative); fall back to the URL
+  // Prefer the uploader's resource type (authoritative); fall back to the URL
   // extension for any URL that didn't come through our uploader.
   const mediaUrlIsVideo =
     mediaResourceType === "video" ||
@@ -920,7 +922,7 @@ export default function PublishPage() {
             ))}
         </div>
 
-        {/* Instagram/Threads media — auto-uploaded to Cloudinary. Instagram and
+        {/* Instagram/Threads media — auto-uploaded to R2. Instagram and
             Threads fetch media by URL rather than accepting an upload, so when a
             file is attached above we upload it and use the returned public URL.
             No manual paste needed. Shows the upload status here. */}
