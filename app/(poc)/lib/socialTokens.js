@@ -141,18 +141,62 @@ export async function getYouTubeToken() {
 // uploaded files, so this turns a local file pick into a URL they can consume.
 // A video URL is short-lived — the publish route deletes the object once
 // publishing is done; image URLs are kept so saved posts keep their preview.
+//
+// `onProgress` is called with { loaded, total, percent } as the bytes go out.
+// This uses XMLHttpRequest rather than fetch because fetch gives no way to
+// observe upload progress — a video takes long enough that a bare spinner
+// leaves the user unable to tell a slow upload from a stuck one.
+//
 // Returns { url, resourceType } or throws with a reason.
-export async function uploadMedia(file) {
+export function uploadMedia(file, onProgress) {
   const jwt = getAppToken();
-  if (!jwt) throw new Error("not_logged_in");
-  const fd = new FormData();
-  fd.append("file", file);
-  const res = await fetch("/api/upload", {
-    method: "POST",
-    headers: authHeaders(), // Bearer app JWT; do NOT set Content-Type for FormData
-    body: fd,
+  if (!jwt) return Promise.reject(new Error("not_logged_in"));
+
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    fd.append("file", file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload");
+    // Bearer app JWT; do NOT set Content-Type — the browser adds the multipart
+    // boundary itself.
+    xhr.setRequestHeader("Authorization", `Bearer ${jwt}`);
+
+    if (onProgress) {
+      xhr.upload.addEventListener("progress", (e) => {
+        // lengthComputable is false when the total size isn't known; reporting
+        // a percent from an unknown total would show a bogus bar.
+        if (!e.lengthComputable) return;
+        onProgress({
+          loaded: e.loaded,
+          total: e.total,
+          percent: Math.round((e.loaded / e.total) * 100),
+        });
+      });
+    }
+
+    xhr.addEventListener("load", () => {
+      let data = {};
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        // Leave data empty; the status check below produces the error.
+      }
+      if (xhr.status === 401) {
+        clearAuthAndRedirect();
+        reject(new Error("unauthorized"));
+        return;
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new Error(data.error || "upload_failed"));
+        return;
+      }
+      resolve({ url: data.url, resourceType: data.resourceType });
+    });
+
+    xhr.addEventListener("error", () => reject(new Error("network_error")));
+    xhr.addEventListener("abort", () => reject(new Error("upload_aborted")));
+
+    xhr.send(fd);
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "upload_failed");
-  return { url: data.url, resourceType: data.resourceType };
 }

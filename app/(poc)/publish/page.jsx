@@ -9,8 +9,15 @@ import {
   FaThreads,
   FaInstagram,
 } from "react-icons/fa6";
-import { FiImage, FiVideo, FiCheck, FiX, FiLoader, FiClock, FiLink, FiZap } from "react-icons/fi";
+import { FiImage, FiVideo, FiCheck, FiX, FiLoader, FiClock, FiLink, FiZap, FiAlertTriangle, FiInfo } from "react-icons/fi";
 import { filterEnabledPages } from "../lib/enabledPages";
+import {
+  PLATFORM_MEDIA_LIMITS,
+  PIPELINE_MAX_BYTES,
+  formatBytes,
+  formatDuration,
+  platformsOverLimit,
+} from "../lib/mediaLimits";
 import { getAccountsMap, getYouTubeToken, uploadMedia } from "../lib/socialTokens";
 import { generateImageFile } from "../lib/imageGeneration";
 import { createPost, publishPost } from "../lib/posts";
@@ -70,6 +77,10 @@ export default function PublishPage() {
   const [mediaResourceType, setMediaResourceType] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  // Live upload progress: { loaded, total, percent }. Null when no upload is in
+  // flight. A video takes long enough that a bare spinner leaves the user
+  // unable to tell a slow upload from a stalled one.
+  const [uploadProgress, setUploadProgress] = useState(null);
 
   // Which platforms the user wants to publish to.
   const [selected, setSelected] = useState({
@@ -184,8 +195,11 @@ export default function PublishPage() {
   async function uploadForMedia(file) {
     setUploading(true);
     setUploadError("");
+    // Start at zero rather than null so the bar appears immediately, before the
+    // first progress event arrives.
+    setUploadProgress({ loaded: 0, total: file.size, percent: 0 });
     try {
-      const { url, resourceType } = await uploadMedia(file);
+      const { url, resourceType } = await uploadMedia(file, setUploadProgress);
       setMediaUrl(url);
       setMediaResourceType(resourceType || null);
     } catch (err) {
@@ -194,6 +208,7 @@ export default function PublishPage() {
       setUploadError(err?.message || "Failed to upload media");
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   }
 
@@ -202,6 +217,7 @@ export default function PublishPage() {
     setMediaUrl("");
     setMediaResourceType(null);
     setUploadError("");
+    setUploadProgress(null);
   }
 
   function onPickImage(e) {
@@ -327,6 +343,19 @@ export default function PublishPage() {
   }
 
   const activeTargets = PLATFORMS.filter((p) => plannedStatus(p.id) === STATUS.pending);
+
+  // Media size checks against the limits in lib/mediaLimits. Two separate
+  // problems, reported separately because the fixes differ:
+  //  - oversizeTargets: platforms that would reject this file. The rest still
+  //    publish, so this is a warning, not a block.
+  //  - overPipelineLimit: our own publish path buffers the whole file in
+  //    memory, so past this size nothing publishes at all.
+  const mediaSize = video?.size || image?.size || 0;
+  const oversizeTargets = platformsOverLimit(
+    mediaSize,
+    activeTargets.map((p) => p.id)
+  );
+  const overPipelineLimit = mediaSize > PIPELINE_MAX_BYTES;
 
   // Can we publish? At least one active target, some content, and (for FB) a Page.
   const hasContent =
@@ -921,6 +950,133 @@ export default function PublishPage() {
               </label>
             ))}
         </div>
+
+        {/* Upload progress. Sits with the file pickers rather than in the
+            Instagram/Threads block below, because every pick uploads — a video
+            for LinkedIn alone would otherwise show no feedback at all. */}
+        {uploading && (
+          <div className="mt-3 rounded-xl border border-violet-400/30 bg-violet-400/10 px-3.5 py-3">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="inline-flex items-center gap-2 text-slate-200">
+                <FiLoader className="h-4 w-4 animate-spin" /> Uploading{" "}
+                {video ? "video" : "image"}…
+              </span>
+              {uploadProgress && (
+                <span className="tabular shrink-0 text-xs text-slate-400">
+                  {formatBytes(uploadProgress.loaded)} /{" "}
+                  {formatBytes(uploadProgress.total)}
+                  <span className="ml-2 font-semibold text-violet-200">
+                    {uploadProgress.percent}%
+                  </span>
+                </span>
+              )}
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-violet-400 transition-[width] duration-200 ease-out"
+                style={{ width: `${uploadProgress?.percent ?? 0}%` }}
+              />
+            </div>
+            {/* Once the bytes are all sent, the wait is R2 finishing the write,
+                which reports no progress — say so instead of parking at 100%. */}
+            {uploadProgress?.percent === 100 && (
+              <p className="mt-2 text-xs text-slate-400">
+                Finishing up on the server…
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Size warnings for the attached file. The pipeline limit is ours and
+            blocks everything, so it wins over the per-platform notice. */}
+        {mediaSize > 0 && overPipelineLimit && (
+          <p className="mt-3 flex items-start gap-2 rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2.5 text-sm text-rose-200">
+            <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              This file is{" "}
+              <span className="tabular font-semibold">{formatBytes(mediaSize)}</span> —
+              over the{" "}
+              <span className="tabular font-semibold">{formatBytes(PIPELINE_MAX_BYTES)}</span>{" "}
+              this app can currently publish. Larger files run out of memory
+              partway through. Use a smaller file, or publish to YouTube on its
+              own.
+            </span>
+          </p>
+        )}
+        {mediaSize > 0 && !overPipelineLimit && oversizeTargets.length > 0 && (
+          <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2.5 text-sm text-amber-200">
+            <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              <span className="tabular font-semibold">{formatBytes(mediaSize)}</span> is
+              over the limit for{" "}
+              <span className="font-semibold">
+                {oversizeTargets.map((id) => PLATFORM_MEDIA_LIMITS[id].label).join(", ")}
+              </span>
+              . Those will fail; the other platforms still publish.
+            </span>
+          </p>
+        )}
+
+        {/* Per-platform limits. Collapsed by default — it's reference material,
+            not something to read on every post. */}
+        <details className="mt-3 rounded-xl border border-white/10 bg-white/[0.03]">
+          <summary className="cursor-pointer list-none px-3.5 py-2.5 text-xs font-medium text-slate-400 transition-colors hover:text-slate-200">
+            <span className="inline-flex items-center gap-2">
+              <FiInfo className="h-3.5 w-3.5" /> Media limits per platform
+            </span>
+          </summary>
+          <div className="overflow-x-auto border-t border-white/10 px-3.5 py-3">
+            <table className="w-full min-w-[26rem] text-left text-xs">
+              <thead>
+                <tr className="text-slate-500">
+                  <th className="pb-2 pr-4 font-medium">Platform</th>
+                  <th className="pb-2 pr-4 font-medium">Max size</th>
+                  <th className="pb-2 pr-4 font-medium">Max length</th>
+                  <th className="pb-2 font-medium">Note</th>
+                </tr>
+              </thead>
+              <tbody className="text-slate-300">
+                {PLATFORMS.map((p) => {
+                  const limit = PLATFORM_MEDIA_LIMITS[p.id];
+                  if (!limit) return null;
+                  const over = oversizeTargets.includes(p.id);
+                  const { Icon } = p;
+                  return (
+                    <tr key={p.id} className="border-t border-white/5">
+                      <td className="py-2 pr-4">
+                        <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                          <Icon className={"h-3.5 w-3.5 " + p.accent} />
+                          {p.label}
+                        </span>
+                      </td>
+                      <td
+                        className={
+                          "tabular whitespace-nowrap py-2 pr-4 " +
+                          (over ? "font-semibold text-amber-300" : "")
+                        }
+                      >
+                        {formatBytes(limit.maxBytes)}
+                      </td>
+                      <td className="tabular whitespace-nowrap py-2 pr-4">
+                        {formatDuration(limit.maxSeconds)}
+                      </td>
+                      <td className="py-2 text-slate-500">{limit.note}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <p className="mt-3 border-t border-white/5 pt-2.5 text-xs text-slate-500">
+              Publishing to several platforms at once means the smallest limit
+              applies. This app currently caps uploads at{" "}
+              <span className="tabular font-medium text-slate-400">
+                {formatBytes(PIPELINE_MAX_BYTES)}
+              </span>{" "}
+              — below every platform limit — because the publish path holds the
+              whole file in memory.
+            </p>
+          </div>
+        </details>
 
         {/* Instagram/Threads media — auto-uploaded to R2. Instagram and
             Threads fetch media by URL rather than accepting an upload, so when a
