@@ -29,6 +29,49 @@ async function getPageToken(userToken, pageId) {
   return { token: page.access_token };
 }
 
+// Flattens a message's attachments/shares into one list the UI can render
+// without knowing Graph's shapes. Photos and stickers arrive as `image_data`
+// (with its own preview_url), files as `file_url`, and link previews as
+// `shares`. Each becomes { kind, url, name, mime }.
+function normalizeAttachments(m) {
+  const out = [];
+  for (const att of m.attachments?.data || []) {
+    const img = att.image_data;
+    if (img?.preview_url || img?.url) {
+      out.push({
+        kind: "image",
+        url: img.preview_url || img.url,
+        // The full-size original, so a click can open it undegraded.
+        fullUrl: img.url || img.preview_url,
+        name: att.name || "",
+        mime: att.mime_type || "",
+      });
+      continue;
+    }
+    if (att.file_url) {
+      // Audio and video still arrive as file_url; the mime type is what
+      // distinguishes them from a generic document.
+      const mime = att.mime_type || "";
+      const kind = mime.startsWith("video/")
+        ? "video"
+        : mime.startsWith("audio/")
+          ? "audio"
+          : "file";
+      out.push({
+        kind,
+        url: att.file_url,
+        name: att.name || "",
+        mime,
+        size: att.size || null,
+      });
+    }
+  }
+  for (const sh of m.shares?.data || []) {
+    if (sh.link) out.push({ kind: "link", url: sh.link, name: sh.name || sh.link });
+  }
+  return out;
+}
+
 // GET /api/auth/facebook/thread?pageId=<id>&threadId=<conversation id>&after=<cursor>
 //
 // Returns ONE page of messages inside a single Messenger conversation, oldest
@@ -61,7 +104,8 @@ export async function GET(request) {
   const url = new URL(`${GRAPH}/${threadId}`);
   url.searchParams.set(
     "fields",
-    `participants,messages.limit(${limit})${after ? `.after(${after})` : ""}{id,message,from,created_time}`
+    `participants,messages.limit(${limit})${after ? `.after(${after})` : ""}` +
+      "{id,message,from,created_time,attachments{id,name,mime_type,size,file_url,image_data},shares{link,name}}"
   );
   url.searchParams.set("access_token", pageToken);
 
@@ -81,6 +125,7 @@ export async function GET(request) {
     fromPage: m.from?.id === pageId,
     fromName: m.from?.name || "",
     timestamp: m.created_time || null,
+    attachments: normalizeAttachments(m),
   }));
 
   return NextResponse.json({

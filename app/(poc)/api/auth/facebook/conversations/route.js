@@ -29,6 +29,22 @@ async function getPageToken(userToken, pageId) {
   return { token: page.access_token };
 }
 
+// A one-line stand-in for a message whose content is an attachment rather than
+// text, so list rows read "Photo" instead of nothing.
+function describeAttachments(msg) {
+  const atts = msg?.attachments?.data || [];
+  if (atts.length === 0) return "";
+  const mime = atts[0].mime_type || "";
+  const label = mime.startsWith("image/")
+    ? "Photo"
+    : mime.startsWith("video/")
+      ? "Video"
+      : mime.startsWith("audio/")
+        ? "Voice message"
+        : "Attachment";
+  return atts.length > 1 ? `${label} +${atts.length - 1}` : label;
+}
+
 // GET /api/auth/facebook/conversations?pageId=<id>&after=<cursor>&limit=<n>
 //
 // Returns ONE page of Messenger conversation threads (newest first), plus the
@@ -61,7 +77,7 @@ export async function GET(request) {
   const url = new URL(`${GRAPH}/${pageId}/conversations`);
   url.searchParams.set(
     "fields",
-    "id,updated_time,unread_count,participants,messages.limit(1){id,message,from,created_time}"
+    "id,updated_time,unread_count,participants,messages.limit(1){id,message,from,created_time,attachments{mime_type}}"
   );
   url.searchParams.set("limit", String(limit));
   if (after) url.searchParams.set("after", after);
@@ -84,7 +100,9 @@ export async function GET(request) {
       id: conv.id,
       recipientId: other?.id || null,
       name: other?.name || msg?.from?.name || "Facebook user",
-      snippet: msg?.message || "",
+      // An attachment-only message has no text, so describe it instead of
+      // leaving the row blank — the way Messenger shows "Photo".
+      snippet: msg?.message || describeAttachments(msg),
       timestamp: msg?.created_time || conv.updated_time || null,
       unread: (conv.unread_count || 0) > 0,
     };

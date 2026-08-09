@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FiArrowLeft, FiRefreshCw, FiSend } from "react-icons/fi";
+import { FiArrowLeft, FiLink, FiPaperclip, FiRefreshCw, FiSend } from "react-icons/fi";
+import { markThreadSeen } from "../../lib/seenThreads";
 import { getAccountsMap } from "../../lib/socialTokens";
 
 const PAGE_SIZE = 25;
@@ -62,6 +63,15 @@ export default function ThreadPage() {
 
   const scrollRef = useRef(null);
   const bottomRef = useRef(null);
+
+  // Clock for the reply-window check below. Reading Date.now() during render
+  // would be impure; this also lets the notice appear on its own if the window
+  // closes while the thread is open.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,6 +142,23 @@ export default function ThreadPage() {
     loadMessages(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, pageId, threadId]);
+
+  // Opening a thread marks it read on Facebook's side too (blue "Seen"), the
+  // same as opening a chat in Messenger. Best-effort: a failure here doesn't
+  // affect reading, so it stays silent. Once per participant, not per refresh.
+  const seenSentRef = useRef(null);
+  useEffect(() => {
+    const recipientId = participant?.id;
+    if (!token || !pageId || !recipientId) return;
+    if (seenSentRef.current === recipientId) return;
+    seenSentRef.current = recipientId;
+    markThreadSeen(threadId);
+    fetch("/api/auth/facebook/seen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ pageId, recipientId }),
+    }).catch(() => {});
+  }, [token, pageId, participant?.id, threadId]);
 
   // Jump to the newest message once the first page lands.
   const jumpedRef = useRef(false);
@@ -214,10 +241,9 @@ export default function ThreadPage() {
   // once their messages are actually loaded — an empty list here means "not
   // known yet", not "expired".
   const lastInbound = messages.filter((m) => !m.fromPage).at(-1);
-  const hoursSinceInbound = lastInbound?.timestamp
-    ? (Date.now() - new Date(lastInbound.timestamp).getTime()) / 3600000
-    : null;
-  const windowExpired = hoursSinceInbound !== null && hoursSinceInbound >= 24;
+  const windowExpired =
+    Boolean(lastInbound?.timestamp) &&
+    now - new Date(lastInbound.timestamp).getTime() >= 24 * 3600000;
 
   return (
     <div className="rise-in mx-auto flex h-[calc(100vh-6rem)] max-w-3xl flex-col px-6 py-6">
@@ -363,21 +389,76 @@ export default function ThreadPage() {
 
 function Bubble({ message }) {
   const mine = message.fromPage;
+  const attachments = message.attachments || [];
+  const hasText = Boolean(message.text);
   return (
     <div className={"flex " + (mine ? "justify-end" : "justify-start")}>
       <div className={"max-w-[75%] " + (mine ? "text-right" : "text-left")}>
-        <div
-          className={
-            "inline-block whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm " +
-            (mine
-              ? "bg-indigo-500 text-white"
-              : "border border-white/10 bg-white/5 text-slate-200")
-          }
-        >
-          {message.text || <span className="italic text-slate-400">(no text)</span>}
-        </div>
+        {attachments.length > 0 && (
+          <div className={"mb-1 flex flex-col gap-1 " + (mine ? "items-end" : "items-start")}>
+            {attachments.map((att, i) => (
+              <Attachment key={att.url || i} attachment={att} />
+            ))}
+          </div>
+        )}
+        {/* A photo-only message has no text bubble — the image is the message,
+            so an empty "(no text)" bubble under it would just be noise. */}
+        {(hasText || attachments.length === 0) && (
+          <div
+            className={
+              "inline-block whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm " +
+              (mine
+                ? "bg-indigo-500 text-white"
+                : "border border-white/10 bg-white/5 text-slate-200")
+            }
+          >
+            {message.text || <span className="italic text-slate-400">(no text)</span>}
+          </div>
+        )}
         <p className="mt-1 px-1 text-[11px] text-slate-500">{clockTime(message.timestamp)}</p>
       </div>
     </div>
+  );
+}
+
+function Attachment({ attachment: att }) {
+  if (att.kind === "image") {
+    return (
+      <a href={att.fullUrl || att.url} target="_blank" rel="noreferrer" className="block">
+        {/* Plain <img>: these are Graph CDN URLs on domains next/image isn't
+            configured for, and they expire, so optimization buys nothing. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={att.url}
+          alt={att.name || "Attachment"}
+          className="max-h-64 max-w-full rounded-2xl border border-white/10 object-cover"
+        />
+      </a>
+    );
+  }
+  if (att.kind === "video") {
+    return (
+      <video
+        src={att.url}
+        controls
+        className="max-h-64 max-w-full rounded-2xl border border-white/10"
+      />
+    );
+  }
+  if (att.kind === "audio") {
+    return <audio src={att.url} controls className="max-w-full" />;
+  }
+  // Files and link previews share a chip presentation.
+  const Icon = att.kind === "link" ? FiLink : FiPaperclip;
+  return (
+    <a
+      href={att.url}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex max-w-full items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3.5 py-2 text-sm text-slate-200 transition-colors hover:bg-white/10"
+    >
+      <Icon className="h-4 w-4 flex-shrink-0 text-slate-400" />
+      <span className="truncate">{att.name || att.url}</span>
+    </a>
   );
 }

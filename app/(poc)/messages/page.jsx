@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FaFacebook, FaInstagram, FaThreads, FaYoutube } from "react-icons/fa6";
 import { FiMessageCircle, FiRefreshCw } from "react-icons/fi";
 import { filterEnabledPages } from "../lib/enabledPages";
+import { applySeenState } from "../lib/seenThreads";
 import { getAccountsMap } from "../lib/socialTokens";
 
 // One tab per platform. `supported` marks whether we can actually list DM
@@ -114,7 +115,10 @@ export default function MessagesPage() {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "load_failed");
-        setThreads((prev) => (reset ? data.threads : [...prev, ...data.threads]));
+        // Threads opened in this browser shouldn't show as unread while
+        // Facebook's own count catches up to the mark_seen call.
+        const batch = applySeenState(data.threads || []);
+        setThreads((prev) => (reset ? batch : [...prev, ...batch]));
         setCursor(data.nextCursor);
         setHasMore(Boolean(data.nextCursor) && (data.threads?.length || 0) > 0);
       } catch (e) {
@@ -136,6 +140,23 @@ export default function MessagesPage() {
     loadThreads(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fbToken, pageId, tab]);
+
+  // Returning from a thread is a client-side navigation, so this list can
+  // re-render from memory with its pre-visit unread dots. Re-apply the locally
+  // seen set when the page becomes visible again to clear them.
+  useEffect(() => {
+    const sync = () => {
+      if (document.visibilityState !== "visible") return;
+      setThreads((prev) => applySeenState(prev));
+    };
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    window.addEventListener("focus", sync);
+    return () => {
+      document.removeEventListener("visibilitychange", sync);
+      window.removeEventListener("focus", sync);
+    };
+  }, []);
 
   // Infinite scroll: load more when the sentinel at the list bottom appears.
   const sentinelRef = useRef(null);
