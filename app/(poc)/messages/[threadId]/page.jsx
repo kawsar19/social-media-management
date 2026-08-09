@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FiArrowLeft, FiLink, FiPaperclip, FiRefreshCw, FiSend } from "react-icons/fi";
+import { FiArrowLeft, FiLink, FiPaperclip, FiRefreshCw, FiSend, FiZap } from "react-icons/fi";
 import { markThreadSeen } from "../../lib/seenThreads";
 import { getAccountsMap } from "../../lib/socialTokens";
 
@@ -53,6 +53,14 @@ export default function ThreadPage() {
   const [error, setError] = useState(null);
 
   const [draft, setDraft] = useState("");
+  // AI rewrite: pick a language and the rough draft is rewritten into it. The
+  // result is held separately from `draft` so the original stays editable and
+  // the rewrite can be previewed — and discarded — before anything is sent.
+  const [language, setLanguage] = useState("");
+  const [preview, setPreview] = useState("");
+  const [rewriting, setRewriting] = useState(false);
+  const [rewriteError, setRewriteError] = useState(null);
+
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(null);
   // Set when the reply window has closed. `needsHumanAgent` narrows that to the
@@ -185,10 +193,47 @@ export default function ThreadPage() {
     return () => io.disconnect();
   }, [hasMore, loading, initialLoaded, loadMessages]);
 
+  // Rewrite the draft into `lang`. Selecting a language triggers this; the
+  // result lands in `preview` and is what gets sent unless it's discarded.
+  const rewrite = useCallback(
+    async (lang) => {
+      const text = draft.trim();
+      if (!text || !lang) return;
+      setRewriting(true);
+      setRewriteError(null);
+      try {
+        const res = await fetch("/api/ai/rewrite", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, language: lang }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "rewrite_failed");
+        setPreview(data.text || "");
+      } catch (err) {
+        setRewriteError(err.message || "Couldn't rewrite that");
+        setPreview("");
+      } finally {
+        setRewriting(false);
+      }
+    },
+    [draft]
+  );
+
+  const onLanguageChange = (e) => {
+    const lang = e.target.value;
+    setLanguage(lang);
+    setPreview("");
+    setRewriteError(null);
+    if (lang) rewrite(lang);
+  };
+
   const send = async (e) => {
     e.preventDefault();
-    const text = draft.trim();
-    if (!text || sending || !participant?.id || !token || !pageId) return;
+    // The rewritten version is what goes out once one exists; the raw draft is
+    // only a means to it.
+    const text = (preview || draft).trim();
+    if (!text || sending || rewriting || !participant?.id || !token || !pageId) return;
     setSending(true);
     setSendError(null);
     setOutsideWindow(false);
@@ -222,6 +267,9 @@ export default function ThreadPage() {
         },
       ]);
       setDraft("");
+      setPreview("");
+      setLanguage("");
+      setRewriteError(null);
       requestAnimationFrame(() =>
         bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
       );
@@ -359,21 +407,91 @@ export default function ThreadPage() {
                 )}
               </div>
             )}
+            {/* AI rewrite controls */}
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <FiZap className="h-4 w-4 text-indigo-400" />
+              <label htmlFor="rewrite-lang" className="text-xs text-slate-400">
+                Rewrite as
+              </label>
+              <select
+                id="rewrite-lang"
+                value={language}
+                onChange={onLanguageChange}
+                disabled={!draft.trim() || rewriting}
+                className="field w-auto min-w-36 text-xs"
+              >
+                <option value="">Off — send as typed</option>
+                <option value="bangla">সুন্দর বাংলা</option>
+                <option value="english">Clean English</option>
+                <option value="banglish">Banglish</option>
+              </select>
+              {rewriting && <span className="text-xs text-slate-500">Rewriting…</span>}
+              {preview && !rewriting && (
+                <button
+                  type="button"
+                  onClick={() => rewrite(language)}
+                  className="text-xs text-indigo-300 underline"
+                >
+                  Try again
+                </button>
+              )}
+            </div>
+
+            {rewriteError && (
+              <div className="mb-2 rounded-xl border border-rose-400/25 bg-rose-400/10 p-3 text-sm text-rose-300">
+                {rewriteError}
+                <span className="mt-1 block text-rose-200/80">
+                  Your original message is unchanged — you can still send it as typed.
+                </span>
+              </div>
+            )}
+
+            {/* Preview of what will actually be sent. Shown separately from the
+                draft so the difference is visible before committing to it. */}
+            {preview && (
+              <div className="mb-2 rounded-xl border border-indigo-400/30 bg-indigo-400/10 p-3">
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-indigo-300">
+                    This will be sent instead
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreview("");
+                      setLanguage("");
+                    }}
+                    className="text-xs text-slate-400 underline hover:text-slate-200"
+                  >
+                    Discard
+                  </button>
+                </div>
+                <p className="whitespace-pre-wrap break-words text-sm text-slate-200">{preview}</p>
+              </div>
+            )}
+
             <div className="flex items-end gap-2">
               <textarea
                 rows={1}
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  // Editing the draft invalidates the rewrite — sending a
+                  // preview of older text would be a nasty surprise.
+                  if (preview) setPreview("");
+                  if (rewriteError) setRewriteError(null);
+                }}
                 onKeyDown={(e) => {
                   // Enter sends, Shift+Enter makes a new line — messenger habit.
                   if (e.key === "Enter" && !e.shiftKey) send(e);
                 }}
-                placeholder={`Message ${title}…`}
+                placeholder={
+                  preview ? "Your draft — the rewrite above is what sends" : `Message ${title}…`
+                }
                 className="field flex-1 resize-y text-sm"
               />
               <button
                 type="submit"
-                disabled={sending || !draft.trim() || !participant?.id}
+                disabled={sending || rewriting || !draft.trim() || !participant?.id}
                 className="btn btn-primary"
               >
                 <FiSend className="h-4 w-4" />
