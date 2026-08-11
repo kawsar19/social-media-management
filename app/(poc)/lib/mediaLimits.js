@@ -49,11 +49,22 @@ export const PLATFORM_MEDIA_LIMITS = {
   },
 };
 
-// What our own publish pipeline can carry. The route downloads the media into a
-// Blob and re-uploads it per platform, so peak memory is several times the file
-// size — well before any platform limit is reached. Raising this needs the
-// upload/publish path to stream instead of buffer.
-export const PIPELINE_MAX_BYTES = 100 * MB;
+// What our own publish pipeline can carry, and the lowest ceiling in practice.
+//
+// The upload itself is no longer the constraint: the browser PUTs straight to
+// R2, so nothing passes through a serverless function on the way in. What binds
+// is publishing. The publish route downloads the media into a Blob once and
+// shares that one Blob across every byte-uploading target (YouTube, LinkedIn,
+// Facebook), so peak memory is roughly one copy of the file rather than one per
+// platform. Instagram and Threads add nothing — they fetch by URL.
+//
+// 500 MB keeps that single copy well inside a serverless function's memory
+// while covering ordinary social video. Going meaningfully higher means
+// streaming R2 -> platform instead of buffering, which is a larger change.
+//
+// Note this is still under every platform's own limit (Instagram and Threads
+// are the tightest at 1 GB), so it remains the binding constraint.
+export const PIPELINE_MAX_BYTES = 500 * MB;
 
 export function formatBytes(bytes) {
   if (bytes >= GB) {

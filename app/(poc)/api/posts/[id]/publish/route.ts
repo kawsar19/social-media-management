@@ -27,7 +27,14 @@ import {
 // deleted (after a delay — see scheduleMediaCleanup) so nothing lingers.
 
 // Covers the publish itself plus the delayed R2 cleanup that runs in `after`,
-// which shares this route's budget.
+// which shares this route's budget. 299 rather than 300 because Vercel's hobby
+// plan rejects 300 at build time despite documenting a 1-300 range.
+//
+// This is the real ceiling on media size, not memory: a large video has to be
+// pulled from R2 and pushed to each byte-uploading platform inside this window.
+// PIPELINE_MAX_BYTES is set with that in mind — raising it much further needs
+// publishing to move off the request path (a queue or background job) rather
+// than a bigger number here, since this is already the plan's maximum.
 export const maxDuration = 299;
 
 // A media Blob is only fetched once and shared across file-upload targets.
