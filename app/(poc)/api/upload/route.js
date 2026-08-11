@@ -16,8 +16,9 @@ import { isR2Configured, uploadToR2 } from "@/lib/r2";
 //
 // Response: { url, key, resourceType } or { error } with an HTTP status.
 
-// Videos are large; give the upload room to finish.
-export const maxDuration = 120;
+// Bound by the user's upload bandwidth, not by us: 200 MB over a ~5 Mbps link
+// takes about 6 minutes, and the browser gets no response until R2 has it all.
+export const maxDuration = 900;
 
 function getUser(req) {
   const authHeader = req.headers.get("authorization");
@@ -46,10 +47,11 @@ export async function POST(request) {
     return NextResponse.json({ error: "no_file" }, { status: 400 });
   }
 
-  const bytes = Buffer.from(await file.arrayBuffer());
-
   try {
-    const { url, key, resourceType } = await uploadToR2(bytes, {
+    // Stream the file straight through to R2. Reading it into a Buffer first
+    // (via arrayBuffer()) holds the whole video in memory and stalls the
+    // request — a 200 MB upload never returned.
+    const { url, key, resourceType } = await uploadToR2(file.stream(), {
       userId: user.userId,
       filename: file.name,
       contentType: file.type,

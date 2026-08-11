@@ -20,7 +20,7 @@ import {
 } from "../lib/mediaLimits";
 import { getAccountsMap, getYouTubeToken, uploadMedia } from "../lib/socialTokens";
 import { generateImageFile } from "../lib/imageGeneration";
-import { createPost, publishPost } from "../lib/posts";
+import { createPost, publishPostStream } from "../lib/posts";
 import LinkedInFormatter from "../components/LinkedInFormatter";
 import LinkedInPreview from "../components/LinkedInPreview";
 
@@ -52,8 +52,6 @@ export default function PublishPage() {
     youtube: null,
     threads: null,
   });
-  // Threads needs its user id (not just a token) to publish as the account.
-  const [thUserId, setThUserId] = useState(null);
 
   // Per-platform identity ({ platformId, platformName }) from the DB, so we can
   // show WHERE each post is going (account name + id + a profile URL) instead of
@@ -111,11 +109,11 @@ export default function PublishPage() {
   const [ytTitle, setYtTitle] = useState("");
   const [ytPrivacy, setYtPrivacy] = useState("private");
 
-  // Live run state: per-platform { status, message } while publishing.
-  const [runs, setRuns] = useState(null); // null = not started; else { [id]: {status, message} }
+  // Per-destination publish progress, in the order the server publishes them.
+  // Empty until a publish starts. An array rather than a map because Facebook
+  // contributes one step per Page, so the platform alone isn't a unique key.
+  const [steps, setSteps] = useState([]);
   const [publishing, setPublishing] = useState(false);
-  // Saving a post to the DB (draft) or save+publish; separate from the legacy
-  // client-side "Publish to all" flow.
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
 
@@ -134,7 +132,6 @@ export default function PublishPage() {
         youtube: ytToken || null,
         threads: map.threads?.accessToken || null,
       });
-      setThUserId(map.threads?.platformId || null);
       // Keep each platform's { platformId, platformName } to show the post
       // destination in the UI. (Facebook lists Pages separately below.)
       setAccountMeta(map);
@@ -372,156 +369,6 @@ export default function PublishPage() {
     !fbNeedsPage &&
     !ytNeedsTitle;
 
-  // --- Individual publishers. Each returns { ok, message }. ---
-
-  async function runLinkedIn() {
-    const fd = new FormData();
-    fd.append("text", text);
-    if (video) fd.append("video", video);
-    else if (image) fd.append("image", image);
-    const res = await fetch("/api/auth/linkedin/share", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${tokens.linkedin}` },
-      body: fd,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, message: data.error || "Failed to publish" };
-    return { ok: true, message: data.id ? `Published (${data.id})` : "Published" };
-  }
-
-  async function runFacebook() {
-    const fd = new FormData();
-    fd.append("text", text);
-    if (video) fd.append("video", video);
-    else if (image) fd.append("image", image);
-    fd.append("pageIds", JSON.stringify(selectedPageIds));
-    const res = await fetch("/api/auth/facebook/share", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${tokens.facebook}` },
-      body: fd,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, message: data.error || "Failed to publish" };
-    const results = data.results || [];
-    const okCount = results.filter((r) => r.ok).length;
-    if (okCount === results.length) {
-      return { ok: true, message: `Published to ${okCount} Page${okCount > 1 ? "s" : ""}` };
-    }
-    const firstErr = results.find((r) => !r.ok)?.error || "Some Pages failed";
-    return {
-      ok: false,
-      message: `${okCount}/${results.length} Pages OK — ${firstErr}`,
-    };
-  }
-
-  async function runYouTube() {
-    const fd = new FormData();
-    fd.append("video", video);
-    fd.append("title", ytTitle);
-    fd.append("description", text);
-    fd.append("privacy", ytPrivacy);
-    const res = await fetch("/api/auth/youtube/share", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${tokens.youtube}` },
-      body: fd,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, message: data.error || "Failed to upload" };
-    return { ok: true, message: `Uploaded (${data.id}) — ${data.privacyStatus}` };
-  }
-
-  async function runInstagram() {
-    // Instagram needs a chosen account + a public media URL (no text-only, no
-    // uploaded files). plannedStatus() already skips IG without a media URL.
-    const url = mediaUrl.trim();
-    const payload = { igUserId: selectedIgId, caption: text };
-    if (mediaUrlIsVideo) payload.videoUrl = url;
-    else payload.imageUrl = url;
-    const res = await fetch("/api/auth/instagram/share", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${tokens.facebook}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, message: data.error || "Failed to publish" };
-    return { ok: true, message: data.id ? `Published (${data.id})` : "Published" };
-  }
-
-  async function runThreads() {
-    // Threads takes text and/or a public media URL (it can't fetch uploaded
-    // files). plannedStatus() skips Threads only when both are missing.
-    const url = mediaUrl.trim();
-    const payload = { userId: thUserId, text };
-    if (url) {
-      if (mediaUrlIsVideo) payload.videoUrl = url;
-      else payload.imageUrl = url;
-    }
-    const res = await fetch("/api/auth/threads/share", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${tokens.threads}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, message: data.error || "Failed to publish" };
-    return { ok: true, message: data.id ? `Published (${data.id})` : "Published" };
-  }
-
-  const RUNNERS = {
-    linkedin: runLinkedIn,
-    facebook: runFacebook,
-    instagram: runInstagram,
-    threads: runThreads,
-    youtube: runYouTube,
-  };
-
-  async function publishAll() {
-    setPublishing(true);
-
-    // Seed the run state: active targets pending, unmet ones skipped.
-    const initial = {};
-    for (const p of PLATFORMS) {
-      const st = plannedStatus(p.id);
-      if (st) {
-        const skipMsg =
-          p.id === "threads"
-            ? "No text or media URL — skipped"
-            : p.id === "instagram"
-            ? "No media URL — skipped"
-            : "No video — skipped";
-        initial[p.id] = {
-          status: st,
-          message: st === STATUS.skipped ? skipMsg : "Waiting…",
-        };
-      }
-    }
-    setRuns(initial);
-
-    // Publish one platform at a time, updating status live as each finishes.
-    for (const p of activeTargets) {
-      setRuns((prev) => ({ ...prev, [p.id]: { status: STATUS.running, message: "Publishing…" } }));
-      try {
-        const out = await RUNNERS[p.id]();
-        setRuns((prev) => ({
-          ...prev,
-          [p.id]: { status: out.ok ? STATUS.done : STATUS.failed, message: out.message },
-        }));
-      } catch {
-        setRuns((prev) => ({
-          ...prev,
-          [p.id]: { status: STATUS.failed, message: "Network error" },
-        }));
-      }
-    }
-
-    setPublishing(false);
-  }
-
   // Build the DB target list from the current selection. Facebook expands to one
   // target per selected Page (each a distinct destination); Instagram carries
   // the chosen IG account; the rest carry the account's own identity.
@@ -599,24 +446,60 @@ export default function PublishPage() {
     setPublishing(true);
     try {
       const created = await createPost(buildPostPayload("draft"));
-      const published = await publishPost(created._id);
-      // Reflect the server results in the live progress panel.
-      const next = {};
-      for (const t of published.targets || []) {
-        next[t.platform] = {
-          status: t.status === "success" ? STATUS.done : STATUS.failed,
-          message:
-            t.status === "success"
-              ? t.platformPostId
-                ? `Published (${t.platformPostId})`
-                : "Published"
-              : t.error || "Failed",
-        };
-      }
-      setRuns(next);
+      await publishPostStream(created._id, (event) => {
+        // `start` names every destination up front, so the stepper shows the
+        // whole run (including the ones still queued) from the first frame.
+        if (event.type === "start") {
+          setSteps(
+            event.targets.map((t) => ({
+              key: t.key,
+              platform: t.platform,
+              destinationName: t.destinationName,
+              status: STATUS.pending,
+              message: "Waiting…",
+            }))
+          );
+          return;
+        }
+        if (event.type === "target") {
+          setSteps((prev) =>
+            prev.map((s) =>
+              s.key !== event.key
+                ? s
+                : {
+                    ...s,
+                    status:
+                      event.status === "success"
+                        ? STATUS.done
+                        : event.status === "failed"
+                        ? STATUS.failed
+                        : STATUS.running,
+                    message:
+                      event.status === "running"
+                        ? "Publishing…"
+                        : event.status === "success"
+                        ? event.platformPostId
+                          ? `Published (${event.platformPostId})`
+                          : "Published"
+                        : event.error || "Failed",
+                    permalink: event.permalink,
+                  }
+            )
+          );
+        }
+      });
       setSaveMsg("Saved and published — see your posts for details.");
     } catch (e) {
       setSaveMsg(e?.message || "Failed to publish");
+      // The stream died mid-run; anything still pending has an unknown outcome
+      // rather than a successful one.
+      setSteps((prev) =>
+        prev.map((s) =>
+          s.status === STATUS.pending || s.status === STATUS.running
+            ? { ...s, status: STATUS.failed, message: "Interrupted" }
+            : s
+        )
+      );
     } finally {
       setSaving(false);
       setPublishing(false);
@@ -624,7 +507,7 @@ export default function PublishPage() {
   }
 
   function reset() {
-    setRuns(null);
+    setSteps([]);
     setSaveMsg("");
     setText("");
     clearImage();
@@ -642,7 +525,9 @@ export default function PublishPage() {
     connected.youtube ||
     connected.threads;
   const allDone =
-    runs && Object.values(runs).every((r) => r.status !== STATUS.running && r.status !== STATUS.pending);
+    steps.length > 0 &&
+    steps.every((s) => s.status !== STATUS.running && s.status !== STATUS.pending);
+  const doneCount = steps.filter((s) => s.status === STATUS.done).length;
 
   return (
     <div className="rise-in mx-auto max-w-6xl px-6 py-10">
@@ -1224,35 +1109,108 @@ export default function PublishPage() {
           <p className="mt-3 text-sm text-amber-300">Add a YouTube title for the video.</p>
         )}
 
-        {/* Live progress */}
-        {runs && (
-          <div className="mt-6 space-y-2.5">
-            {PLATFORMS.filter((p) => runs[p.id]).map((p) => {
-              const r = runs[p.id];
-              const { Icon } = p;
-              return (
-                <div
-                  key={p.id}
-                  className={
-                    "flex items-center gap-3 rounded-xl border p-3.5 transition-all duration-300 " +
-                    (r.status === STATUS.done
-                      ? "border-emerald-400/30 bg-emerald-400/10"
-                      : r.status === STATUS.failed
-                      ? "border-rose-400/30 bg-rose-400/10"
-                      : r.status === STATUS.running
-                      ? "border-violet-400/40 bg-violet-400/10"
-                      : "border-white/10 bg-white/[0.03]")
-                  }
-                >
-                  <Icon className={"h-5 w-5 shrink-0 " + p.accent} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-white">{p.label}</p>
-                    <p className="truncate text-xs text-slate-400">{r.message}</p>
-                  </div>
-                  <StatusBadge status={r.status} />
-                </div>
-              );
-            })}
+        {/* Publish stepper. Each destination is a step, in the order the server
+            publishes them, updated live from the SSE stream. */}
+        {steps.length > 0 && (
+          <div className="mt-6">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                {allDone ? "Publish results" : "Publishing…"}
+              </p>
+              <p className="tabular text-xs text-slate-500">
+                {doneCount} of {steps.length} done
+              </p>
+            </div>
+
+            <ol className="relative">
+              {steps.map((s, i) => {
+                const meta = PLATFORMS.find((p) => p.id === s.platform);
+                const Icon = meta?.Icon;
+                const isLast = i === steps.length - 1;
+                return (
+                  <li key={s.key} className="relative flex gap-3.5 pb-3 last:pb-0">
+                    {/* Connector line joining this step to the next one. */}
+                    {!isLast && (
+                      <span
+                        aria-hidden
+                        className={
+                          "absolute left-[13px] top-8 bottom-1 w-px " +
+                          (s.status === STATUS.done
+                            ? "bg-emerald-400/40"
+                            : "bg-white/10")
+                        }
+                      />
+                    )}
+
+                    {/* Step marker — carries the state, so it reads at a glance. */}
+                    <span
+                      className={
+                        "relative z-10 mt-0.5 flex h-[27px] w-[27px] shrink-0 items-center justify-center rounded-full border transition-colors " +
+                        (s.status === STATUS.done
+                          ? "border-emerald-400/40 bg-emerald-400/20 text-emerald-300"
+                          : s.status === STATUS.failed
+                          ? "border-rose-400/40 bg-rose-400/20 text-rose-300"
+                          : s.status === STATUS.running
+                          ? "border-violet-400/50 bg-violet-400/20 text-violet-200"
+                          : "border-white/10 bg-white/5 text-slate-500")
+                      }
+                    >
+                      {s.status === STATUS.done ? (
+                        <FiCheck className="h-3.5 w-3.5" />
+                      ) : s.status === STATUS.failed ? (
+                        <FiX className="h-3.5 w-3.5" />
+                      ) : s.status === STATUS.running ? (
+                        <FiLoader className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <FiClock className="h-3.5 w-3.5" />
+                      )}
+                    </span>
+
+                    <div
+                      className={
+                        "min-w-0 flex-1 rounded-xl border px-3.5 py-2.5 transition-colors " +
+                        (s.status === STATUS.done
+                          ? "border-emerald-400/25 bg-emerald-400/[0.07]"
+                          : s.status === STATUS.failed
+                          ? "border-rose-400/25 bg-rose-400/[0.07]"
+                          : s.status === STATUS.running
+                          ? "border-violet-400/35 bg-violet-400/[0.09]"
+                          : "border-white/10 bg-white/[0.03]")
+                      }
+                    >
+                      <div className="flex items-center gap-2">
+                        {Icon && (
+                          <Icon className={"h-4 w-4 shrink-0 " + meta.accent} />
+                        )}
+                        <p className="truncate text-sm font-semibold text-white">
+                          {meta?.label ?? s.platform}
+                          {/* Names the specific Page/account, so several
+                              Facebook steps are tellable apart. */}
+                          {s.destinationName && (
+                            <span className="ml-1.5 font-normal text-slate-400">
+                              · {s.destinationName}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-slate-400">
+                        {s.message}
+                      </p>
+                      {s.permalink && (
+                        <a
+                          href={s.permalink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-block text-xs font-medium text-emerald-300 underline decoration-emerald-300/30 underline-offset-2 hover:decoration-emerald-300"
+                        >
+                          View post →
+                        </a>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
           </div>
         )}
       </div>
@@ -1277,43 +1235,5 @@ export default function PublishPage() {
         page.
       </p>
     </div>
-  );
-}
-
-// Small status pill that mirrors a target's run state.
-function StatusBadge({ status }) {
-  if (status === STATUS.done) {
-    return (
-      <span className="flex items-center gap-1.5 rounded-full bg-emerald-400/20 px-2.5 py-1 text-xs font-medium text-emerald-300">
-        <FiCheck className="h-3.5 w-3.5" /> Done
-      </span>
-    );
-  }
-  if (status === STATUS.failed) {
-    return (
-      <span className="flex items-center gap-1.5 rounded-full bg-rose-400/20 px-2.5 py-1 text-xs font-medium text-rose-200">
-        <FiX className="h-3.5 w-3.5" /> Failed
-      </span>
-    );
-  }
-  if (status === STATUS.running) {
-    return (
-      <span className="flex items-center gap-1.5 rounded-full bg-violet-400/20 px-2.5 py-1 text-xs font-medium text-violet-200">
-        <FiLoader className="h-3.5 w-3.5 animate-spin" /> Publishing
-      </span>
-    );
-  }
-  if (status === STATUS.skipped) {
-    return (
-      <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-slate-400">
-        Skipped
-      </span>
-    );
-  }
-  // pending
-  return (
-    <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-slate-400">
-      <FiClock className="h-3.5 w-3.5" /> Waiting
-    </span>
   );
 }

@@ -67,7 +67,9 @@ export function formatBytes(bytes) {
     // jumps in whole megabytes and reads as stalled on a small file.
     return `${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} MB`;
   }
-  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  // Round up, so a partially-sent chunk never reads as 0 KB — but keep a true
+  // zero (the moment an upload starts) honest.
+  return bytes === 0 ? "0 KB" : `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
 }
 
 export function formatDuration(seconds) {

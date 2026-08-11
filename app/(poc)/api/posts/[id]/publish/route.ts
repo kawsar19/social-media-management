@@ -106,6 +106,207 @@ async function publishUrlTarget(ctx: Ctx, target: any, token: string) {
   return { ok: true, id: data.id };
 }
 
+// A target's identity as the client sees it. destinationId disambiguates the
+// Facebook Pages, which all share the "facebook" platform.
+function targetKey(target: any) {
+  return target.destinationId
+    ? `${target.platform}:${target.destinationId}`
+    : target.platform;
+}
+
+// One progress event. `start` names every target up front so the stepper can
+// render the full list before anything publishes; `target` reports one target
+// moving to running/success/failed; `done` carries the saved post.
+type PublishEvent =
+  | { type: "start"; targets: { key: string; platform: string; destinationName?: string }[] }
+  | {
+      type: "target";
+      key: string;
+      status: "running" | "success" | "failed";
+      platformPostId?: string;
+      permalink?: string;
+      error?: string;
+    }
+  | { type: "done"; post: any }
+  | { type: "error"; error: string };
+
+// Publishes the post, yielding an event as each target starts and finishes.
+//
+// Written as a generator so the SSE and plain-JSON responses share one code
+// path: the streaming branch forwards each event as it arrives, the JSON branch
+// drains the generator and returns only the final post.
+async function* runPublish(
+  post: any,
+  userId: string,
+  origin: string
+): AsyncGenerator<PublishEvent> {
+  yield {
+    type: "start",
+    targets: post.targets.map((t: any) => ({
+      key: targetKey(t),
+      platform: t.platform,
+      destinationName: t.destinationName,
+    })),
+  };
+
+  post.status = "publishing";
+  await post.save();
+
+  // Download media once for the file-upload platforms.
+  const mediaBlob = await fetchMediaBlob(post.mediaUrl);
+  const mediaName = post.mediaType === "video" ? "upload.mp4" : "upload.jpg";
+  const ctx: Ctx = { origin, userId, post, mediaBlob, mediaName };
+
+  // Facebook: all its targets (one per Page) publish in a single share call,
+  // then we map the per-Page results back onto each target by pageId.
+  const fbTargets = post.targets.filter((t: any) => t.platform === "facebook");
+  const fbHandled = new Set<any>();
+  if (fbTargets.length > 0) {
+    const { token } = await resolvePlatformToken(userId, "facebook");
+    if (!token) {
+      for (const t of fbTargets) {
+        t.status = "failed";
+        t.error = "no_facebook_token";
+        fbHandled.add(t);
+        yield { type: "target", key: targetKey(t), status: "failed", error: t.error };
+      }
+    } else {
+      // Every Page goes out in one call, so they all enter "running" together.
+      for (const t of fbTargets) {
+        yield { type: "target", key: targetKey(t), status: "running" };
+      }
+      const fd = new FormData();
+      fd.append("text", post.content || "");
+      if (mediaBlob) {
+        if (post.mediaType === "video") fd.append("video", mediaBlob, mediaName);
+        else fd.append("image", mediaBlob, mediaName);
+      }
+      fd.append(
+        "pageIds",
+        JSON.stringify(fbTargets.map((t: any) => t.destinationId).filter(Boolean))
+      );
+      try {
+        const res = await fetch(shareUrl(origin, "facebook"), {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
+        });
+        const data = await res.json().catch(() => ({}));
+        const results: any[] = data.results || [];
+        for (const t of fbTargets) {
+          const r = results.find((x) => x.pageId === t.destinationId);
+          if (r?.ok) {
+            t.status = "success";
+            t.platformPostId = r.id;
+            t.permalink = permalinkFor("facebook", r.id);
+            t.publishedAt = new Date();
+            yield {
+              type: "target",
+              key: targetKey(t),
+              status: "success",
+              platformPostId: t.platformPostId,
+              permalink: t.permalink,
+            };
+          } else {
+            t.status = "failed";
+            t.error = r?.error || data.error || "publish_failed";
+            yield { type: "target", key: targetKey(t), status: "failed", error: t.error };
+          }
+          fbHandled.add(t);
+        }
+      } catch (err: any) {
+        console.error("[publish] facebook threw:", err);
+        for (const t of fbTargets) {
+          t.status = "failed";
+          t.error = err?.message
+            ? `network_error: ${err.message}`
+            : "network_error";
+          fbHandled.add(t);
+          yield { type: "target", key: targetKey(t), status: "failed", error: t.error };
+        }
+      }
+    }
+  }
+
+  // Everything else: publish each target independently.
+  for (const target of post.targets) {
+    if (fbHandled.has(target)) continue;
+
+    const { token } = await resolvePlatformToken(userId, target.platform);
+    if (!token) {
+      target.status = "failed";
+      target.error = `no_${target.platform}_token`;
+      yield {
+        type: "target",
+        key: targetKey(target),
+        status: "failed",
+        error: target.error,
+      };
+      continue;
+    }
+
+    yield { type: "target", key: targetKey(target), status: "running" };
+
+    try {
+      const out =
+        target.platform === "instagram" || target.platform === "threads"
+          ? await publishUrlTarget(ctx, target, token)
+          : await publishFileTarget(ctx, target, token);
+
+      if (out.ok) {
+        target.status = "success";
+        target.platformPostId = out.id;
+        target.permalink = permalinkFor(
+          target.platform,
+          out.id,
+          target.destinationName
+        );
+        target.publishedAt = new Date();
+        yield {
+          type: "target",
+          key: targetKey(target),
+          status: "success",
+          platformPostId: target.platformPostId,
+          permalink: target.permalink,
+        };
+      } else {
+        target.status = "failed";
+        target.error = out.error;
+        yield {
+          type: "target",
+          key: targetKey(target),
+          status: "failed",
+          error: target.error,
+        };
+      }
+    } catch (err: any) {
+      // Keep the real reason. "network_error" alone is unactionable — an
+      // out-of-memory abort on a large video and a genuinely unreachable share
+      // route look identical without it.
+      console.error(`[publish] ${target.platform} threw:`, err);
+      target.status = "failed";
+      target.error = err?.message ? `network_error: ${err.message}` : "network_error";
+      yield {
+        type: "target",
+        key: targetKey(target),
+        status: "failed",
+        error: target.error,
+      };
+    }
+  }
+
+  // Roll up the overall status from the per-target outcomes.
+  const successes = post.targets.filter((t: any) => t.status === "success").length;
+  const total = post.targets.length;
+  if (successes === 0) post.status = "failed";
+  else if (successes < total) post.status = "partial";
+  else post.status = "published";
+  if (successes > 0 && !post.publishedAt) post.publishedAt = new Date();
+
+  await post.save();
+  yield { type: "done", post };
+}
+
 export async function POST(request: NextRequest, { params }: { params: any }) {
   try {
     await connectDB();
@@ -124,122 +325,61 @@ export async function POST(request: NextRequest, { params }: { params: any }) {
     }
 
     const origin = new URL(request.url).origin;
-    post.status = "publishing";
-    await post.save();
+    const wantsStream =
+      new URL(request.url).searchParams.get("stream") === "1";
 
-    // Download media once for the file-upload platforms.
-    const mediaBlob = await fetchMediaBlob(post.mediaUrl);
-    const mediaName =
-      post.mediaType === "video" ? "upload.mp4" : "upload.jpg";
-    const ctx: Ctx = { origin, userId: user.userId, post, mediaBlob, mediaName };
-
-    // Facebook: all its targets (one per Page) publish in a single share call,
-    // then we map the per-Page results back onto each target by pageId.
-    const fbTargets = post.targets.filter((t: any) => t.platform === "facebook");
-    const fbHandled = new Set<any>();
-    if (fbTargets.length > 0) {
-      const { token } = await resolvePlatformToken(user.userId, "facebook");
-      if (!token) {
-        for (const t of fbTargets) {
-          t.status = "failed";
-          t.error = "no_facebook_token";
-          fbHandled.add(t);
-        }
-      } else {
-        const fd = new FormData();
-        fd.append("text", post.content || "");
-        if (mediaBlob) {
-          if (post.mediaType === "video") fd.append("video", mediaBlob, mediaName);
-          else fd.append("image", mediaBlob, mediaName);
-        }
-        fd.append(
-          "pageIds",
-          JSON.stringify(fbTargets.map((t: any) => t.destinationId).filter(Boolean))
-        );
-        try {
-          const res = await fetch(shareUrl(origin, "facebook"), {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-            body: fd,
-          });
-          const data = await res.json().catch(() => ({}));
-          const results: any[] = data.results || [];
-          for (const t of fbTargets) {
-            const r = results.find((x) => x.pageId === t.destinationId);
-            if (r?.ok) {
-              t.status = "success";
-              t.platformPostId = r.id;
-              t.permalink = permalinkFor("facebook", r.id);
-              t.publishedAt = new Date();
-            } else {
-              t.status = "failed";
-              t.error = r?.error || data.error || "publish_failed";
-            }
-            fbHandled.add(t);
-          }
-        } catch {
-          for (const t of fbTargets) {
-            t.status = "failed";
-            t.error = "network_error";
-            fbHandled.add(t);
-          }
-        }
-      }
-    }
-
-    // Everything else: publish each target independently.
-    for (const target of post.targets) {
-      if (fbHandled.has(target)) continue;
-
-      const { token } = await resolvePlatformToken(user.userId, target.platform);
-      if (!token) {
-        target.status = "failed";
-        target.error = `no_${target.platform}_token`;
-        continue;
-      }
-
-      try {
-        const out =
-          target.platform === "instagram" || target.platform === "threads"
-            ? await publishUrlTarget(ctx, target, token)
-            : await publishFileTarget(ctx, target, token);
-
-        if (out.ok) {
-          target.status = "success";
-          target.platformPostId = out.id;
-          target.permalink = permalinkFor(
-            target.platform,
-            out.id,
-            target.destinationName
-          );
-          target.publishedAt = new Date();
-        } else {
-          target.status = "failed";
-          target.error = out.error;
-        }
-      } catch {
-        target.status = "failed";
-        target.error = "network_error";
-      }
-    }
-
-    // Roll up the overall status from the per-target outcomes.
-    const successes = post.targets.filter((t: any) => t.status === "success").length;
-    const total = post.targets.length;
-    if (successes === 0) post.status = "failed";
-    else if (successes < total) post.status = "partial";
-    else post.status = "published";
-    if (successes > 0 && !post.publishedAt) post.publishedAt = new Date();
-
-    await post.save();
-
-    // Every target has been attempted, so the staged video has served its
-    // purpose — drop it after the response, once the URL-fetching platforms
-    // have had time to pull it. Images are kept so the saved post still renders
-    // a preview. Runs on failures too: a failed publish leaves the same
-    // orphaned object behind.
+    // Read before publishing: once every target has been attempted the staged
+    // video has served its purpose, so it's dropped after the response — once
+    // the URL-fetching platforms have had time to pull it. Images are kept so
+    // the saved post still renders a preview. Runs on failures too: a failed
+    // publish leaves the same orphaned object behind.
     const stagedMediaUrl = post.mediaUrl;
     const stagedMediaType = post.mediaType;
+
+    if (wantsStream) {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const event of runPublish(post, user.userId, origin)) {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
+              );
+            }
+          } catch {
+            // The publish failed outright (not one target failing) — tell the
+            // client rather than closing the stream on it silently.
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ type: "error", error: "server_error" })}\n\n`
+              )
+            );
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      after(() => scheduleMediaCleanup(stagedMediaUrl, stagedMediaType));
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+          // Proxies that buffer would defeat the point of streaming.
+          "X-Accel-Buffering": "no",
+        },
+      });
+    }
+
+    // Non-streaming callers (e.g. /profile/posts) still get one JSON response.
+    for await (const event of runPublish(post, user.userId, origin)) {
+      if (event.type === "error") {
+        return NextResponse.json({ error: event.error }, { status: 500 });
+      }
+    }
+
     after(() => scheduleMediaCleanup(stagedMediaUrl, stagedMediaType));
 
     return NextResponse.json({ post });

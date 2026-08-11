@@ -1,8 +1,5 @@
-import {
-  S3Client,
-  PutObjectCommand,
-  DeleteObjectCommand,
-} from "@aws-sdk/client-s3";
+import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 
 // Cloudflare R2 (S3-compatible) media hosting.
 //
@@ -67,9 +64,17 @@ export type R2Upload = {
   resourceType: "image" | "video";
 };
 
-// Upload bytes and return the public URL plus the key needed to delete it later.
+// Each multipart chunk is held in memory while it uploads, so this trades peak
+// memory against part count. 8 MB keeps a large video well under a few hundred
+// MB of buffers while staying far below S3's 10,000-part ceiling.
+const PART_SIZE = 8 * 1024 * 1024;
+
+// Upload a file and return the public URL plus the key needed to delete it
+// later. `body` may be a Buffer or a stream — a large video must be streamed,
+// since buffering one whole (`arrayBuffer()`) stalls the request long enough to
+// look like a hang.
 export async function uploadToR2(
-  body: Buffer,
+  body: Buffer | ReadableStream | NodeJS.ReadableStream,
   {
     userId,
     filename,
@@ -79,14 +84,20 @@ export async function uploadToR2(
   const key = buildKey(userId, filename);
   const type = contentType || "application/octet-stream";
 
-  await getClient().send(
-    new PutObjectCommand({
+  // Upload (from lib-storage) does multipart when the body is large enough and
+  // a single PutObject otherwise, so both paths go through one call.
+  const upload = new Upload({
+    client: getClient(),
+    params: {
       Bucket: BUCKET,
       Key: key,
-      Body: body,
+      Body: body as any,
       ContentType: type,
-    })
-  );
+    },
+    partSize: PART_SIZE,
+    queueSize: 4, // parts in flight; 4 saturates a typical link without hoarding memory
+  });
+  await upload.done();
 
   return {
     url: `${PUBLIC_BASE_URL}/${key}`,

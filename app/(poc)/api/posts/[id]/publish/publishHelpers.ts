@@ -58,9 +58,15 @@ export async function fetchMediaBlob(mediaUrl?: string) {
   if (!mediaUrl) return null;
   try {
     const res = await fetch(mediaUrl, { cache: "no-store" });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Silence here would surface downstream as an unexplained per-platform
+      // failure, so say which URL failed and why.
+      console.error(`[publish] media fetch ${res.status} for ${mediaUrl}`);
+      return null;
+    }
     return await res.blob();
-  } catch {
+  } catch (err) {
+    console.error(`[publish] media fetch threw for ${mediaUrl}:`, err);
     return null;
   }
 }
