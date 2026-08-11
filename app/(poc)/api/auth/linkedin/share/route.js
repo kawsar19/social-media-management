@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 const LINKEDIN_VERSION = "202604";
 
 // Video uploads can take a while; hint deployment platforms to allow more time.
-export const maxDuration = 300;
+export const maxDuration = 299;
 
 async function fetchWithTimeout(input, init = {}, timeoutMs = 120000) {
   return fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) });

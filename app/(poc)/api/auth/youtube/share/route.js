@@ -7,7 +7,7 @@ const YT_UPLOAD =
   "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status";
 
 // Video uploads can take a while; hint deployment platforms to allow more time.
-export const maxDuration = 300;
+export const maxDuration = 299;
 
 async function fetchWithRetry(input, init = {}, attempts = 3) {
   let lastErr;

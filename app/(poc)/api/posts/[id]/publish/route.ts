@@ -28,7 +28,7 @@ import {
 
 // Covers the publish itself plus the delayed R2 cleanup that runs in `after`,
 // which shares this route's budget.
-export const maxDuration = 300;
+export const maxDuration = 299;
 
 // A media Blob is only fetched once and shared across file-upload targets.
 type Ctx = {

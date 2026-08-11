@@ -4,7 +4,7 @@ const GRAPH_VERSION = process.env.FACEBOOK_GRAPH_VERSION || "v25.0";
 const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 // Video uploads can take a while; hint deployment platforms to allow more time.
-export const maxDuration = 300;
+export const maxDuration = 299;
 
 // Node's fetch (undici) sometimes hangs on graph.facebook.com (IPv6 / flaky
 // network) and times out after ~10s. Retry a couple of times with a bounded
