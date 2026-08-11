@@ -19,13 +19,13 @@ import { isR2Configured, uploadToR2 } from "@/lib/r2";
 // Bound by the user's upload bandwidth, not by us: 200 MB over a ~5 Mbps link
 // takes about 6 minutes, and the browser gets no response until R2 has it all.
 //
-// 300 is the ceiling Vercel's hobby plan allows (anything higher fails the
-// build outright), so that's what we ask for rather than the ~900 the slowest
-// uploads would want. In practice that's enough: PIPELINE_MAX_BYTES caps
-// uploads at 100 MB, which clears 300s on any link above ~3 Mbps. A slower
-// connection than that will have the request killed mid-upload and see the
-// composer's "Upload failed" notice.
-export const maxDuration = 300;
+// Vercel's hobby plan states a 1–300 range but rejects 300 itself at build
+// time, so this sits just under it rather than on the boundary. That's well
+// short of the ~900 the slowest uploads would want, and in practice it's
+// enough: PIPELINE_MAX_BYTES caps uploads at 100 MB, which clears 299s on any
+// link above ~3 Mbps. A slower connection than that will have the request
+// killed mid-upload and see the composer's "Upload failed" notice.
+export const maxDuration = 299;
 
 function getUser(req) {
   const authHeader = req.headers.get("authorization");
