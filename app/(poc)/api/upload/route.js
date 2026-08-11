@@ -1,31 +1,31 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
-import { isR2Configured, uploadToR2 } from "@/lib/r2";
+import { isR2Configured, createPresignedUpload } from "@/lib/r2";
 
 // POST /api/upload
 // Auth: Bearer <app JWT> (from AuthProvider — only logged-in users may upload).
 //
-// Takes a multipart form with a single `file` (image or video) and uploads it
-// to Cloudflare R2, returning its public https URL. Instagram and Threads can't
-// accept uploaded files directly — they fetch media by URL — so this is what
-// turns a local file pick into a URL those platforms can consume.
+// Hands back a short-lived URL the browser can PUT a file straight to in
+// Cloudflare R2, plus the public https URL that file will have once it lands.
+// Instagram and Threads can't accept an uploaded file — they fetch media by URL
+// — so this is what turns a local file pick into a URL those platforms can
+// consume.
+//
+// The file itself never passes through this route. It used to, and that put a
+// 100 MB video inside one serverless request: past the platform's request-size
+// cap, and long enough to run into its duration cap. Signing a URL keeps this
+// request small and fast whatever the file weighs, and the transfer becomes a
+// direct browser-to-R2 PUT.
 //
 // Videos are staging only: once the post has been published, the publish route
 // deletes them from R2. Images stay so the saved post keeps a preview (see
 // scheduleMediaCleanup in the publish route's helpers).
 //
-// Response: { url, key, resourceType } or { error } with an HTTP status.
-
-// Bound by the user's upload bandwidth, not by us: 200 MB over a ~5 Mbps link
-// takes about 6 minutes, and the browser gets no response until R2 has it all.
+// Request:  { filename?, contentType? }
+// Response: { uploadUrl, url, key, resourceType } or { error } with a status.
 //
-// Vercel's hobby plan states a 1–300 range but rejects 300 itself at build
-// time, so this sits just under it rather than on the boundary. That's well
-// short of the ~900 the slowest uploads would want, and in practice it's
-// enough: PIPELINE_MAX_BYTES caps uploads at 100 MB, which clears 299s on any
-// link above ~3 Mbps. A slower connection than that will have the request
-// killed mid-upload and see the composer's "Upload failed" notice.
-export const maxDuration = 299;
+// Note: R2 needs a CORS rule allowing PUT from this app's origin, or the
+// browser blocks the direct upload before it starts.
 
 function getUser(req) {
   const authHeader = req.headers.get("authorization");
@@ -48,25 +48,22 @@ export async function POST(request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const form = await request.formData().catch(() => null);
-  const file = form?.get("file"); // File or null
-  if (!file || typeof file.arrayBuffer !== "function" || file.size === 0) {
-    return NextResponse.json({ error: "no_file" }, { status: 400 });
-  }
+  const body = await request.json().catch(() => ({}));
+  const filename =
+    typeof body.filename === "string" ? body.filename : undefined;
+  const contentType =
+    typeof body.contentType === "string" ? body.contentType : undefined;
 
   try {
-    // Stream the file straight through to R2. Reading it into a Buffer first
-    // (via arrayBuffer()) holds the whole video in memory and stalls the
-    // request — a 200 MB upload never returned.
-    const { url, key, resourceType } = await uploadToR2(file.stream(), {
+    const presigned = await createPresignedUpload({
       userId: user.userId,
-      filename: file.name,
-      contentType: file.type,
+      filename,
+      contentType,
     });
-    return NextResponse.json({ url, key, resourceType });
+    return NextResponse.json(presigned);
   } catch (err) {
     return NextResponse.json(
-      { error: err?.message || "upload_failed" },
+      { error: err?.message || "presign_failed" },
       { status: 502 }
     );
   }

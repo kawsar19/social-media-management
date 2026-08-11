@@ -1,5 +1,10 @@
-import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  DeleteObjectCommand,
+  PutObjectCommand,
+} from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // Cloudflare R2 (S3-compatible) media hosting.
 //
@@ -100,6 +105,55 @@ export async function uploadToR2(
   await upload.done();
 
   return {
+    url: `${PUBLIC_BASE_URL}/${key}`,
+    key,
+    resourceType: type.startsWith("video/") ? "video" : "image",
+  };
+}
+
+export type R2PresignedUpload = {
+  uploadUrl: string;
+  url: string;
+  key: string;
+  resourceType: "image" | "video";
+};
+
+// How long the browser has to start the upload. Long enough for a user to pick
+// a file and for a slow link to get going, short enough that a leaked URL isn't
+// a standing write grant on the bucket.
+const PRESIGN_EXPIRY_SECONDS = 15 * 60;
+
+// Mint a URL the browser can PUT a file straight to, bypassing our server.
+//
+// Routing a 100 MB video through the app server means holding the whole request
+// open while it transfers — which runs into serverless request-size and
+// duration limits that no amount of tuning fixes. Handing back a signed URL
+// instead keeps our request small and constant: the browser talks to R2
+// directly, and we only ever pass credentials, never bytes.
+//
+// The key is built here rather than accepted from the client, so a caller can't
+// choose where in the bucket to write or overwrite another user's object.
+// `contentType` is signed into the URL, so the PUT must send the same value.
+export async function createPresignedUpload({
+  userId,
+  filename,
+  contentType,
+}: {
+  userId: string;
+  filename?: string;
+  contentType?: string;
+}): Promise<R2PresignedUpload> {
+  const key = buildKey(userId, filename);
+  const type = contentType || "application/octet-stream";
+
+  const uploadUrl = await getSignedUrl(
+    getClient(),
+    new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: type }),
+    { expiresIn: PRESIGN_EXPIRY_SECONDS }
+  );
+
+  return {
+    uploadUrl,
     url: `${PUBLIC_BASE_URL}/${key}`,
     key,
     resourceType: type.startsWith("video/") ? "video" : "image",

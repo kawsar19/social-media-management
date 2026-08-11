@@ -140,31 +140,20 @@ export async function getYouTubeToken(accountId) {
   return data.accessToken;
 }
 
-// Upload a File (image or video) to R2 via /api/upload and get back a public
-// https URL. Instagram and Threads fetch media by URL rather than accepting
-// uploaded files, so this turns a local file pick into a URL they can consume.
-// A video URL is short-lived — the publish route deletes the object once
-// publishing is done; image URLs are kept so saved posts keep their preview.
+// PUT the file straight to a presigned R2 URL, reporting progress as it goes.
 //
-// `onProgress` is called with { loaded, total, percent } as the bytes go out.
-// This uses XMLHttpRequest rather than fetch because fetch gives no way to
-// observe upload progress — a video takes long enough that a bare spinner
-// leaves the user unable to tell a slow upload from a stuck one.
-//
-// Returns { url, resourceType } or throws with a reason.
-export function uploadMedia(file, onProgress) {
-  const jwt = getAppToken();
-  if (!jwt) return Promise.reject(new Error("not_logged_in"));
-
+// XMLHttpRequest rather than fetch: fetch gives no way to observe upload
+// progress, and a video takes long enough that a bare spinner leaves the user
+// unable to tell a slow upload from a stuck one.
+function putToR2(uploadUrl, file, onProgress) {
   return new Promise((resolve, reject) => {
-    const fd = new FormData();
-    fd.append("file", file);
-
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/upload");
-    // Bearer app JWT; do NOT set Content-Type — the browser adds the multipart
-    // boundary itself.
-    xhr.setRequestHeader("Authorization", `Bearer ${jwt}`);
+    xhr.open("PUT", uploadUrl);
+    // Send the same Content-Type the URL was signed with, so the object is
+    // stored with the right type — that's what makes Instagram and Threads
+    // treat it as a video rather than a download. No auth header: the
+    // signature in the URL is the authorisation, and adding one breaks it.
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
 
     if (onProgress) {
       xhr.upload.addEventListener("progress", (e) => {
@@ -180,27 +169,70 @@ export function uploadMedia(file, onProgress) {
     }
 
     xhr.addEventListener("load", () => {
-      let data = {};
-      try {
-        data = JSON.parse(xhr.responseText);
-      } catch {
-        // Leave data empty; the status check below produces the error.
-      }
-      if (xhr.status === 401) {
-        clearAuthAndRedirect();
-        reject(new Error("unauthorized"));
-        return;
-      }
       if (xhr.status < 200 || xhr.status >= 300) {
-        reject(new Error(data.error || "upload_failed"));
+        // R2 answers with XML, not JSON, so there's no error field to read.
+        // The status is what distinguishes the cases worth naming.
+        reject(
+          new Error(
+            xhr.status === 403
+              ? "upload_link_expired"
+              : `upload_failed_${xhr.status}`
+          )
+        );
         return;
       }
-      resolve({ url: data.url, resourceType: data.resourceType });
+      resolve();
     });
 
+    // A CORS rejection surfaces here as a bare error with no status: the
+    // browser blocks the request before R2 ever sees it.
     xhr.addEventListener("error", () => reject(new Error("network_error")));
     xhr.addEventListener("abort", () => reject(new Error("upload_aborted")));
 
-    xhr.send(fd);
+    xhr.send(file);
   });
+}
+
+// Upload a File (image or video) to R2 and get back a public https URL.
+// Instagram and Threads fetch media by URL rather than accepting uploaded
+// files, so this turns a local file pick into a URL they can consume. A video
+// URL is short-lived — the publish route deletes the object once publishing is
+// done; image URLs are kept so saved posts keep their preview.
+//
+// Two steps: ask /api/upload for a presigned URL, then PUT the file straight to
+// R2. The file never passes through our server, which is what lets a 100 MB
+// video upload at all — routing it through a serverless function ran into that
+// platform's request-size and duration caps.
+//
+// `onProgress` is called with { loaded, total, percent } as the bytes go out.
+//
+// Returns { url, resourceType } or throws with a reason.
+export async function uploadMedia(file, onProgress) {
+  const jwt = getAppToken();
+  if (!jwt) throw new Error("not_logged_in");
+
+  // Step 1: presign. Small and quick — no file bytes are sent here.
+  const res = await fetch("/api/upload", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${jwt}`,
+    },
+    body: JSON.stringify({ filename: file.name, contentType: file.type }),
+  });
+
+  if (res.status === 401) {
+    clearAuthAndRedirect();
+    throw new Error("unauthorized");
+  }
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "upload_failed");
+
+  // Step 2: the actual transfer, browser to R2.
+  await putToR2(data.uploadUrl, file, onProgress);
+
+  // The public URL only resolves once the PUT has succeeded, so it's returned
+  // after the upload rather than alongside the signed URL.
+  return { url: data.url, resourceType: data.resourceType };
 }
