@@ -422,3 +422,762 @@ body {
 .scroll-slim::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ============================================================
+   AI writer modal.
+
+   The overlay is portalled to <body> on purpose: .app-shell is a
+   positioned ancestor with a fixed background attachment, and a
+   `position: fixed` child of it gets clipped to the shell rather
+   than filling the viewport.
+
+   The panel is a three-row grid (head / scrolling body / foot) with a
+   capped height, so a long generated post scrolls *inside* the dialog
+   and the header and primary action stay put.
+   ============================================================ */
+@keyframes ai-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes ai-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.ai-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  /* Darker than a plain scrim: the page behind is itself dark, so the
+     dialog needs real separation to read as "on top". */
+  background: radial-gradient(
+      60rem 40rem at 50% 0%,
+      rgba(120, 80, 255, 0.16),
+      transparent 60%
+    ),
+    rgba(3, 5, 12, 0.72);
+  backdrop-filter: blur(6px) saturate(120%);
+  -webkit-backdrop-filter: blur(6px) saturate(120%);
+  animation: ai-overlay-in 0.22s ease-out both;
+}
+:root[data-theme="light"] .ai-overlay {
+  background: radial-gradient(
+      60rem 40rem at 50% 0%,
+      rgba(120, 80, 255, 0.12),
+      transparent 60%
+    ),
+    rgba(18, 24, 40, 0.42);
+}
+
+.ai-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 100%;
+  max-width: 44rem;
+  /* Cap against the viewport so the body — not the page — is what scrolls. */
+  max-height: min(88vh, 52rem);
+  border-radius: 1.25rem;
+  overflow: hidden;
+  background: var(--ai-panel-bg, rgba(16, 20, 32, 0.92));
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  box-shadow:
+    0 1px 0 0 var(--glass-inset) inset,
+    0 40px 90px -20px rgba(0, 0, 0, 0.75);
+  animation: ai-panel-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+:root[data-theme="light"] .ai-panel {
+  --ai-panel-bg: rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.8) inset,
+    0 40px 90px -24px rgba(19, 26, 45, 0.35);
+}
+
+.ai-panel-head {
+  position: relative;
+  overflow: hidden;
+  padding: 1.4rem 1.5rem 1.15rem;
+  border-bottom: 1px solid var(--line);
+}
+/* A soft brand wash behind the title, so the header has some life without
+   another border or filled bar. */
+.ai-glow {
+  position: absolute;
+  inset: -60% 30% auto -10%;
+  height: 16rem;
+  background: radial-gradient(
+    closest-side,
+    rgba(217, 70, 239, 0.22),
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
+.ai-panel-body {
+  overflow-y: auto;
+  overscroll-behavior: contain; /* wheel at the end doesn't scroll the page */
+  padding: 1.25rem 1.5rem 1.5rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+.ai-panel-body::-webkit-scrollbar {
+  width: 8px;
+}
+.ai-panel-body::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 999px;
+}
+.ai-panel-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ai-panel-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--line);
+  background: var(--fill-subtle);
+}
+
+.ai-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #e879f9;
+  background: rgba(217, 70, 239, 0.12);
+  border: 1px solid rgba(217, 70, 239, 0.3);
+}
+:root[data-theme="light"] .ai-chip {
+  color: #a21caf;
+  background: rgba(217, 70, 239, 0.1);
+}
+
+.ai-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border-radius: 0.6rem;
+  color: var(--text-muted);
+  background: var(--fill-subtle);
+  border: 1px solid var(--line);
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+.ai-close:hover {
+  color: var(--text-strong);
+  background: var(--glass-bg-hover);
+}
+
+/* Section label — one rule instead of repeating four utilities per label. */
+.ai-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ai-label-ok {
+  color: #34d399;
+}
+:root[data-theme="light"] .ai-label-ok {
+  color: #047857;
+}
+
+/* Segmented control: write-new vs improve-draft. */
+.ai-segment {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 0.85rem;
+  background: var(--fill-subtle);
+  border: 1px solid var(--line);
+}
+.ai-segment-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.65rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+.ai-segment-btn:hover {
+  color: var(--text-body);
+}
+.ai-segment-btn.is-active {
+  color: var(--text-strong);
+  background: var(--glass-bg-hover);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+:root[data-theme="light"] .ai-segment-btn.is-active {
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(19, 26, 45, 0.14);
+}
+
+/* Brief box + the shortcut hint tucked into its bottom-right corner. */
+.ai-brief {
+  position: relative;
+}
+.ai-kbd-hint {
+  position: absolute;
+  right: 0.7rem;
+  bottom: 0.55rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.ai-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  padding: 0.05rem 0.25rem;
+  border-radius: 0.3rem;
+  font-family: inherit;
+  font-size: 0.68rem;
+  line-height: 1.3;
+  color: var(--text-body);
+  background: var(--fill-subtle);
+  border: 1px solid var(--line);
+}
+
+.ai-example {
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--fill-subtle);
+  border: 1px solid var(--line);
+  transition: color 150ms ease-out, background-color 150ms ease-out,
+    border-color 150ms ease-out;
+}
+.ai-example:hover {
+  color: var(--text-body);
+  background: var(--glass-bg-hover);
+  border-color: var(--line-strong);
+}
+
+/* On/off chips for hashtags + emoji. */
+.ai-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--fill-subtle);
+  border: 1px solid var(--line);
+  transition: color 150ms ease-out, background-color 150ms ease-out,
+    border-color 150ms ease-out;
+}
+.ai-toggle:hover:not(:disabled) {
+  color: var(--text-body);
+}
+.ai-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ai-toggle.is-on {
+  color: #e879f9;
+  background: rgba(217, 70, 239, 0.12);
+  border-color: rgba(217, 70, 239, 0.35);
+}
+:root[data-theme="light"] .ai-toggle.is-on {
+  color: #a21caf;
+}
+
+.ai-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  color: #fda4af;
+  background: rgba(255, 59, 48, 0.1);
+  border: 1px solid rgba(255, 59, 48, 0.28);
+}
+:root[data-theme="light"] .ai-error {
+  color: #9f1239;
+}
+
+/* Loading placeholder shaped like the post that's coming. */
+.ai-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem;
+  border-radius: 0.85rem;
+  background: var(--fill-subtle);
+  border: 1px solid var(--line);
+}
+.ai-skeleton > span {
+  height: 0.7rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    100deg,
+    var(--skeleton-base) 30%,
+    var(--skeleton-shine) 50%,
+    var(--skeleton-base) 70%
+  );
+  background-size: 200% 100%;
+  animation: sheen 1.4s linear infinite;
+}
+
+.ai-result {
+  animation: rise-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.ai-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--fill-subtle);
+  border: 1px solid var(--line);
+  transition: color 150ms ease-out, background-color 150ms ease-out;
+}
+.ai-copy:hover {
+  color: var(--text-body);
+  background: var(--glass-bg-hover);
+}
+
+@media (max-width: 640px) {
+  .ai-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+  /* Full-bleed sheet on phones: a centred card with margins wastes the
+     little height there is, and the panel already scrolls internally. */
+  .ai-panel {
+    max-width: none;
+    max-height: 94vh;
+    border-radius: 1.25rem 1.25rem 0 0;
+  }
+  .ai-panel-head,
+  .ai-panel-body,
+  .ai-panel-foot {
+    padding-left: 1.1rem;
+    padding-right: 1.1rem;
+  }
+  /* Both primary actions share the row rather than one wrapping alone. */
+  .ai-panel-foot .btn {
+    flex: 1 1 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-overlay,
+  .ai-panel,
+  .ai-result {
+    animation: none;
+  }
+  .ai-skeleton > span {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   Publish composer.
+
+   The page is a three-step flow (choose targets → write → review),
+   so these styles give each step a card with a numbered header and
+   keep the publish action in a sticky bar that's always reachable.
+   Everything reads from the theme tokens so light mode follows for
+   free.
+   ============================================================ */
+
+/* The form column. `pc-actions` is its last child and sticks to the viewport
+   bottom, floating over the cards above it while you scroll. The bar's own
+   negative-margin pull-up (below) keeps it from adding dead space at the end
+   of the column. */
+.pc-col {
+  min-width: 0;
+}
+
+/* Numbered step card. */
+.pc-step {
+  border-radius: 1.1rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    0 1px 0 0 var(--glass-inset) inset,
+    0 12px 40px -18px var(--glass-shadow);
+  overflow: hidden;
+}
+.pc-step + .pc-step {
+  margin-top: 1rem;
+}
+/* Clearance so the content above can scroll fully past the sticky action bar
+   rather than ending underneath it. A dedicated spacer rather than a margin on
+   the last card, because what precedes the bar varies (blocker notices, the
+   save message) and a margin on any one of them would be conditional. */
+.pc-spacer {
+  height: 4.5rem;
+}
+.pc-step-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.95rem 1.15rem;
+  border-bottom: 1px solid var(--line);
+}
+.pc-step-body {
+  padding: 1.15rem;
+}
+/* The step number. Filled once the step has been satisfied, so the
+   page shows progress at a glance instead of looking uniformly inert. */
+.pc-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--fill-subtle);
+  border: 1px solid var(--line);
+  transition: color 200ms ease-out, background-color 200ms ease-out,
+    border-color 200ms ease-out;
+}
+.pc-step-num.is-done {
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+:root[data-theme="light"] .pc-step-num.is-done {
+  color: #047857;
+}
+.pc-step-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+}
+.pc-step-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Platform toggle card. */
+.pc-plat {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.85rem;
+  text-align: left;
+  background: var(--fill-subtle);
+  border: 1px solid var(--line);
+  transition: border-color 160ms ease-out, background-color 160ms ease-out,
+    transform 160ms ease-out;
+}
+.pc-plat:not(:disabled):hover {
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+.pc-plat:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* Selected state carries a tinted ring rather than only a checkmark —
+   at a glance you can see which platforms are armed. */
+.pc-plat.is-on {
+  background: var(--glass-bg-hover);
+  border-color: rgba(120, 150, 255, 0.5);
+  box-shadow: 0 0 0 1px rgba(120, 150, 255, 0.22);
+}
+.pc-plat-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 0.4rem;
+  color: transparent;
+  border: 1px solid var(--line-strong);
+  transition: color 160ms ease-out, background-color 160ms ease-out,
+    border-color 160ms ease-out;
+}
+.pc-plat.is-on .pc-plat-check {
+  color: #0b0f1a;
+  background: #ffffff;
+  border-color: #ffffff;
+}
+:root[data-theme="light"] .pc-plat.is-on .pc-plat-check {
+  color: #ffffff;
+  background: #4f6fff;
+  border-color: #4f6fff;
+}
+
+/* Small labelled section inside a step (Pages, channels, IG account). */
+.pc-sub {
+  margin-top: 0.9rem;
+  padding: 0.85rem;
+  border-radius: 0.85rem;
+  background: var(--fill-subtle);
+  border: 1px solid var(--line);
+}
+.pc-sub-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Checkbox row for Pages / channels. */
+.pc-check {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.6rem;
+  cursor: pointer;
+  background: var(--glass-bg);
+  border: 1px solid var(--line);
+  transition: border-color 150ms ease-out, background-color 150ms ease-out;
+}
+.pc-check:hover {
+  background: var(--glass-bg-hover);
+  border-color: var(--line-strong);
+}
+
+/* Destination summary row. */
+.pc-dest {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0;
+}
+.pc-dest + .pc-dest {
+  border-top: 1px solid var(--line);
+}
+
+/* Action bar. Sticky to the viewport bottom so the publish button is always
+   reachable while scrolling a long form. It is the last child of the column,
+   so it settles at the end of the form once you reach the bottom.
+
+   While stuck it floats OVER the step cards, so the background must be opaque
+   — a translucent bar with text showing through reads as a rendering bug. */
+.pc-actions {
+  position: sticky;
+  bottom: 0.75rem;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  /* Pulled up into the spacer above it, so the bar occupies that reserved
+     room rather than adding more below it. */
+  margin-top: -3.75rem;
+  padding: 0.9rem 1.15rem;
+  border-radius: 1.1rem;
+  background: var(--pc-bar-solid, #141824);
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    0 1px 0 0 var(--glass-inset) inset,
+    0 18px 45px -14px rgba(0, 0, 0, 0.85);
+}
+:root[data-theme="light"] .pc-actions {
+  --pc-bar-solid: #ffffff;
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.9) inset,
+    0 18px 45px -18px rgba(31, 41, 68, 0.28);
+}
+
+/* Inline notice — one rule for the amber/rose/slate variants the page
+   uses for warnings, errors, and hints. */
+.pc-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  background: var(--fill-subtle);
+  border: 1px solid var(--line);
+}
+.pc-note-warn {
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+:root[data-theme="light"] .pc-note-warn {
+  color: #92400e;
+}
+.pc-note-err {
+  color: #fda4af;
+  background: rgba(255, 59, 48, 0.1);
+  border-color: rgba(255, 59, 48, 0.28);
+}
+:root[data-theme="light"] .pc-note-err {
+  color: #9f1239;
+}
+.pc-note-ok {
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+:root[data-theme="light"] .pc-note-ok {
+  color: #047857;
+}
+
+/* Media dropzone. */
+.pc-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  flex: 1 1 12rem;
+  padding: 1.1rem 1rem;
+  border-radius: 0.85rem;
+  cursor: pointer;
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--fill-subtle);
+  border: 1px dashed var(--line-strong);
+  transition: color 160ms ease-out, border-color 160ms ease-out,
+    background-color 160ms ease-out;
+}
+.pc-drop:hover {
+  color: var(--text-body);
+  background: var(--glass-bg-hover);
+  border-color: rgba(120, 150, 255, 0.5);
+}
+
+/* Progress bar used by uploads. */
+.pc-bar {
+  height: 0.3rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--fill-track);
+}
+.pc-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #8b5cf6, #d946ef);
+  transition: width 200ms ease-out;
+}
+
+/* Publish stepper rows. */
+.pc-run {
+  display: flex;
+  gap: 0.85rem;
+  padding-bottom: 0.7rem;
+}
+.pc-run:last-child {
+  padding-bottom: 0;
+}
+.pc-run-dot {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.7rem;
+  height: 1.7rem;
+  margin-top: 0.1rem;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--fill-subtle);
+  border: 1px solid var(--line);
+}
+.pc-run-dot.is-done {
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+.pc-run-dot.is-failed {
+  color: #fb7185;
+  background: rgba(255, 59, 48, 0.18);
+  border-color: rgba(255, 59, 48, 0.4);
+}
+.pc-run-dot.is-running {
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.5);
+}
+.pc-run-card {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.6rem 0.85rem;
+  border-radius: 0.75rem;
+  background: var(--fill-subtle);
+  border: 1px solid var(--line);
+}
+.pc-run-card.is-done {
+  background: rgba(16, 185, 129, 0.07);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+.pc-run-card.is-failed {
+  background: rgba(255, 59, 48, 0.07);
+  border-color: rgba(255, 59, 48, 0.25);
+}
+.pc-run-card.is-running {
+  background: rgba(139, 92, 246, 0.09);
+  border-color: rgba(139, 92, 246, 0.35);
+}
+
+@media (max-width: 640px) {
+  .pc-actions {
+    /* Full-width buttons read better than two cramped ones on a phone. */
+    justify-content: stretch;
+  }
+  .pc-actions .btn {
+    flex: 1 1 auto;
+  }
+}

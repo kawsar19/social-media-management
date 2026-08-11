@@ -43,30 +43,36 @@ export default function LinkedInPreview({
       .toUpperCase() || "You";
 
   return (
-    <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-3">
+    // The outer chrome follows the app theme; the card inside stays white
+    // because that IS the LinkedIn card being previewed.
+    <div className="pc-step p-3">
       {/* Preview header + device toggle */}
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-          Post preview
-        </span>
-        <div className="flex items-center gap-1 rounded-lg bg-slate-900/60 p-0.5">
+        <span className="pc-sub-title mb-0">Post preview</span>
+        <div className="ai-segment gap-0.5 p-0.5">
           <button
             type="button"
             title="Mobile"
+            aria-label="Mobile"
+            aria-pressed={device === "mobile"}
             onClick={() => setDevice("mobile")}
-            className={`flex h-7 w-8 items-center justify-center rounded-md transition ${
-              device === "mobile" ? "bg-slate-700 text-white" : "text-slate-400"
-            }`}
+            className={
+              "ai-segment-btn flex-none px-2 py-1.5" +
+              (device === "mobile" ? " is-active" : "")
+            }
           >
             <FiSmartphone className="h-4 w-4" />
           </button>
           <button
             type="button"
             title="Desktop"
+            aria-label="Desktop"
+            aria-pressed={device === "desktop"}
             onClick={() => setDevice("desktop")}
-            className={`flex h-7 w-8 items-center justify-center rounded-md transition ${
-              device === "desktop" ? "bg-slate-700 text-white" : "text-slate-400"
-            }`}
+            className={
+              "ai-segment-btn flex-none px-2 py-1.5" +
+              (device === "desktop" ? " is-active" : "")
+            }
           >
             <FiMonitor className="h-4 w-4" />
           </button>
