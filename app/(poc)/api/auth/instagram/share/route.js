@@ -36,9 +36,15 @@ async function waitForContainer(containerId, token) {
   url.searchParams.set("fields", "status_code,status");
   url.searchParams.set("access_token", token);
 
-  // Up to ~60s (20 tries x 3s). Reels of any real length usually finish well
-  // inside this; if not, we surface the timeout instead of hanging forever.
-  for (let i = 0; i < 20; i++) {
+  // Wait up to ~100s, staying inside this route's maxDuration (120s) with room
+  // to spare for the publish call that follows. A flat 3s interval spent that
+  // budget in 60s and timed out on longer Reels while the container was still
+  // transcoding, so the delay ramps instead: quick early polls catch short
+  // videos fast, then it backs off so the same number of requests covers a much
+  // longer window.
+  const deadline = Date.now() + 100000;
+  let delay = 2000;
+  while (Date.now() < deadline) {
     const res = await fetchWithRetry(url, { cache: "no-store" });
     const data = await res.json();
     if (!res.ok || data.error) {
@@ -49,9 +55,20 @@ async function waitForContainer(containerId, token) {
       return { ok: false, error: data.status || "media_processing_failed" };
     }
     // IN_PROGRESS / EXPIRED / PUBLISHED — keep waiting on IN_PROGRESS.
-    await sleep(3000);
+    // Don't sleep past the deadline; a truncated final wait is better than
+    // overshooting maxDuration and having the whole request killed.
+    await sleep(Math.min(delay, Math.max(0, deadline - Date.now())));
+    delay = Math.min(delay * 1.5, 10000);
   }
-  return { ok: false, error: "media_processing_timeout" };
+  // Still processing. The container is usually fine — Instagram just needed
+  // longer than we can wait inside one request, so the video may still appear
+  // on the account shortly. Say that, because a bare "timeout" reads as a
+  // failure and sends people off to re-publish a post that then double-posts.
+  return {
+    ok: false,
+    error:
+      "Instagram was still processing the video after 100s. It may still publish on its own — check the account before trying again.",
+  };
 }
 
 // Publishes a single photo or Reel to one Instagram Business/Creator account.

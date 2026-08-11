@@ -52,9 +52,14 @@ async function waitForContainer(containerId, token) {
   url.searchParams.set("fields", "status,error_message");
   url.searchParams.set("access_token", token);
 
-  // Up to ~60s (20 tries x 3s). Threads recommends ~30s before publishing a
-  // video; polling for FINISHED is the reliable version of that wait.
-  for (let i = 0; i < 20; i++) {
+  // Wait up to ~100s, staying inside this route's maxDuration with room for the
+  // publish call that follows. Threads recommends ~30s before publishing a
+  // video; polling for FINISHED is the reliable version of that wait. The delay
+  // ramps rather than sitting at a flat 3s, so short videos are caught quickly
+  // while the same number of requests still covers a long transcode.
+  const deadline = Date.now() + 100000;
+  let delay = 2000;
+  while (Date.now() < deadline) {
     const res = await fetchWithRetry(url, { cache: "no-store" });
     const data = await res.json();
     if (!res.ok || data.error) {
@@ -64,10 +69,18 @@ async function waitForContainer(containerId, token) {
     if (data.status === "ERROR") {
       return { ok: false, error: data.error_message || "media_processing_failed" };
     }
-    // IN_PROGRESS — keep waiting.
-    await sleep(3000);
+    // IN_PROGRESS — keep waiting. Don't sleep past the deadline; a truncated
+    // final wait beats overshooting maxDuration and losing the whole request.
+    await sleep(Math.min(delay, Math.max(0, deadline - Date.now())));
+    delay = Math.min(delay * 1.5, 10000);
   }
-  return { ok: false, error: "media_processing_timeout" };
+  // Still processing — see the note in the Instagram route: this is a wait that
+  // ran out, not a rejected video, so don't word it as an outright failure.
+  return {
+    ok: false,
+    error:
+      "Threads was still processing the video after 100s. It may still publish on its own — check the account before trying again.",
+  };
 }
 
 export async function POST(request) {
