@@ -73,13 +73,22 @@ export async function POST(request: NextRequest) {
     if (scope !== undefined) update.scope = scope;
 
     const account = await SocialAccount.findOneAndUpdate(
-      { userId: user.userId, platform },
+      { userId: user.userId, platform, platformId },
       update,
       { new: true, upsert: true }
     );
 
     return NextResponse.json({ account }, { status: 201 });
   } catch (error) {
+    // A duplicate-key error here means a unique index is rejecting the insert
+    // (e.g. a stale { userId, platform } index left over from before
+    // multi-account support). Surfacing it beats a bare 500 that reads as an
+    // unexplained "failed to save".
+    if ((error as { code?: number })?.code === 11000) {
+      console.error("[accounts] duplicate key:", error);
+      return NextResponse.json({ error: "duplicate_account" }, { status: 409 });
+    }
+    console.error("[accounts] save failed:", error);
     return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
 }

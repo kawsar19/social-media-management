@@ -97,8 +97,11 @@ function buildYouTubeAuthUrl() {
     // access_type=offline + prompt=consent make Google return a refresh_token.
     // We persist it in the DB (SocialAccount) so the server can auto-refresh the
     // ~1-hour access token instead of forcing the user to reconnect each hour.
+    // select_account is what makes connecting a SECOND channel possible: without
+    // it Google silently reuses the currently signed-in account, so the user
+    // never gets to pick a different one.
     access_type: "offline",
-    prompt: "consent",
+    prompt: "select_account consent",
     include_granted_scopes: "true",
     state: "poc",
   });
@@ -142,11 +145,6 @@ export default function ConnectPage() {
   // platform ("linkedin" | "facebook" | "youtube" | "threads" | "instagram").
   const [accountIds, setAccountIds] = useState({});
 
-  // A YouTube refresh_token captured from the OAuth callback hash. Google only
-  // returns it on first consent, so we stash it here until the channel loads
-  // and we persist the account (with its platformId) to the DB.
-  const [ytRefreshToken, setYtRefreshToken] = useState(null);
-  const [ytExpiresIn, setYtExpiresIn] = useState(null);
   const [thUserIdPending, setThUserIdPending] = useState(null);
 
   // Facebook: connected via the "Login with Facebook" OAuth redirect. The
@@ -160,11 +158,15 @@ export default function ConnectPage() {
   // Which Pages the user has chosen to show across the app. Empty = show all.
   const [enabledPageIds, setEnabledPageIdsState] = useState([]);
 
-  // YouTube: connected via Google OAuth. The callback returns the access token
-  // in the URL hash (yt_access_token), same pattern as Facebook. We then load
-  // the user's channel to confirm the connection.
-  const [ytToken, setYtToken] = useState(null);
-  const [ytChannel, setYtChannel] = useState(null);
+  // YouTube: connected via Google OAuth. Multiple channels are supported.
+  // ytPendingToken holds the token from the OAuth callback for a NEW connection
+  // that hasn't been persisted yet. ytAccounts holds all connected accounts
+  // loaded from the DB.
+  const [ytPendingToken, setYtPendingToken] = useState(null);
+  const [ytPendingRefresh, setYtPendingRefresh] = useState(null);
+  const [ytPendingExpiresIn, setYtPendingExpiresIn] = useState(null);
+  const [ytAccounts, setYtAccounts] = useState([]);
+  const [ytChannels, setYtChannels] = useState({});
   const [ytLoading, setYtLoading] = useState(false);
   const [ytError, setYtError] = useState(null);
 
@@ -214,9 +216,9 @@ export default function ConnectPage() {
       // channel-load effect can persist them for server-side auto-refresh.
       const ytAccessToken = hash.get("yt_access_token");
       if (ytAccessToken) {
-        setYtToken(ytAccessToken);
-        setYtRefreshToken(hash.get("yt_refresh_token") || null);
-        setYtExpiresIn(hash.get("expires_in") || null);
+        setYtPendingToken(ytAccessToken);
+        setYtPendingRefresh(hash.get("yt_refresh_token") || null);
+        setYtPendingExpiresIn(hash.get("expires_in") || null);
         window.history.replaceState(null, "", "/connect");
         return;
       }
@@ -252,14 +254,25 @@ export default function ConnectPage() {
       const accounts = await fetchAccounts();
       if (cancelled || accounts.length === 0) return;
       const ids = {};
+      const ytAccts = [];
       for (const a of accounts) {
-        ids[a.platform] = a._id;
+        // YouTube is multi-account, so a single id per platform can't represent
+        // it — ytAccounts holds the full list and disconnect works off that.
+        if (a.platform !== "youtube") ids[a.platform] = a._id;
         if (a.platform === "linkedin") setToken((t) => t ?? a.accessToken);
         if (a.platform === "facebook") setFbToken((t) => t ?? a.accessToken);
-        if (a.platform === "youtube") setYtToken((t) => t ?? a.accessToken);
+        if (a.platform === "youtube") {
+          ytAccts.push(a);
+        }
         if (a.platform === "threads") setThToken((t) => t ?? a.accessToken);
       }
       setAccountIds(ids);
+      if (ytAccts.length > 0) {
+        setYtAccounts(ytAccts);
+        for (const acct of ytAccts) {
+          loadYtChannel(acct);
+        }
+      }
     })();
 
     return () => {
@@ -356,33 +369,22 @@ export default function ConnectPage() {
     };
   }, [thToken]);
 
-  // Whenever we have a YouTube token, load the channel to confirm the
-  // connection via our /api/auth/youtube/channel proxy.
+  // Whenever we have a pending YouTube token (from the OAuth callback for a
+  // NEW connection), load the channel and persist the account.
   useEffect(() => {
-    if (!ytToken) {
-      setYtChannel(null);
-      return;
-    }
+    if (!ytPendingToken) return;
 
     let cancelled = false;
     setYtLoading(true);
     setYtError(null);
 
     (async () => {
-      // The ytToken in state may be a stale one rehydrated from the DB (Google
-      // access tokens last ~1 hour). Ask the server for a guaranteed-fresh
-      // token first — it refreshes via the stored refresh_token when needed —
-      // and fall back to the in-hand token (e.g. right after OAuth, before it's
-      // persisted, or when no refresh_token is on file).
-      let activeToken = ytToken;
-      try {
-        const fresh = await getYouTubeToken();
-        if (fresh) activeToken = fresh;
-      } catch {
-        // reauth_required / refresh_failed / not-yet-persisted — fall through
-        // with ytToken; the channel call below surfaces a real error if it's dead.
-      }
-      if (cancelled) return;
+      // Use the token from THIS OAuth callback as-is. Do NOT ask
+      // /api/auth/youtube/token for a "fresh" one here: with no accountId it
+      // returns whichever YouTube account was stored first, so connecting a
+      // second channel would identify (and overwrite) the first one instead of
+      // creating a new account.
+      const activeToken = ytPendingToken;
 
       try {
         const res = await fetch("/api/auth/youtube/channel", {
@@ -391,42 +393,71 @@ export default function ConnectPage() {
         const data = await res.json();
         if (cancelled) return;
         if (!res.ok) {
-          // Most likely an expired/revoked token that couldn't be refreshed.
           setYtError(data.error || "Failed to load YouTube channel");
-          setYtChannel(null);
-        } else {
-          setYtChannel(data.channel || null);
-          if (data.channel) {
-            // Persist with the refresh_token + expiry so the server can auto-
-            // refresh the ~1h access token via /api/auth/youtube/token. On a
-            // rehydrated (already-connected) load we have no fresh refresh
-            // token in hand, so only send it when we captured one this session.
-            const acct = {
-              platform: "youtube",
-              platformId: data.channel.id,
-              platformName: data.channel.title || "YouTube Channel",
-              accessToken: activeToken,
-            };
-            if (ytRefreshToken) acct.refreshToken = ytRefreshToken;
-            if (ytExpiresIn) {
-              acct.expiresAt = new Date(
-                Date.now() + Number(ytExpiresIn) * 1000
-              ).toISOString();
-            }
-            persistAccount(acct);
+        } else if (data.channel) {
+          const channel = data.channel;
+          const acct = {
+            platform: "youtube",
+            platformId: channel.id,
+            platformName: channel.title || "YouTube Channel",
+            accessToken: activeToken,
+          };
+          if (ytPendingRefresh) acct.refreshToken = ytPendingRefresh;
+          if (ytPendingExpiresIn) {
+            acct.expiresAt = new Date(
+              Date.now() + Number(ytPendingExpiresIn) * 1000
+            ).toISOString();
+          }
+          const saved = await persistAccount(acct);
+          if (saved) {
+            setYtAccounts((prev) => {
+              const idx = prev.findIndex((a) => a.platformId === channel.id);
+              const next = idx >= 0 ? [...prev] : [...prev, saved];
+              if (idx >= 0) next[idx] = saved;
+              return next;
+            });
+            setYtChannels((prev) => ({ ...prev, [saved._id]: channel }));
           }
         }
       } catch {
         if (!cancelled) setYtError("Failed to load YouTube channel");
       } finally {
-        if (!cancelled) setYtLoading(false);
+        if (!cancelled) {
+          setYtLoading(false);
+          setYtPendingToken(null);
+          setYtPendingRefresh(null);
+          setYtPendingExpiresIn(null);
+        }
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [ytToken]);
+  }, [ytPendingToken]);
+
+  // Load channel data for an already-connected YouTube account.
+  async function loadYtChannel(account) {
+    try {
+      let activeToken = account.accessToken;
+      try {
+        const fresh = await getYouTubeToken(account._id);
+        if (fresh) activeToken = fresh;
+      } catch {}
+
+      const res = await fetch("/api/auth/youtube/channel", {
+        headers: { Authorization: `Bearer ${activeToken}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.channel) {
+        setYtChannels((prev) => ({ ...prev, [account._id]: data.channel }));
+      } else {
+        setYtChannels((prev) => ({ ...prev, [account._id]: null }));
+      }
+    } catch {
+      setYtChannels((prev) => ({ ...prev, [account._id]: null }));
+    }
+  }
 
   // Whenever we have a Facebook token, fetch the Pages it can manage
   // via our /api/auth/facebook/pages proxy (which calls /me/accounts).
@@ -533,23 +564,28 @@ export default function ConnectPage() {
   async function persistAccount(account) {
     if (!getAppToken()) {
       setErrorMsg("Log in to save connected accounts.");
-      return;
+      return null;
     }
     try {
       const saved = await saveAccount(account);
-      if (saved?._id) {
+      // YouTube is excluded: it can have several accounts, and a one-id-per-
+      // platform map would let a second channel clobber the first.
+      if (saved?._id && account.platform !== "youtube") {
         setAccountIds((prev) => ({ ...prev, [account.platform]: saved._id }));
       }
+      return saved;
     } catch (e) {
       setErrorMsg(`Failed to save ${account.platform} connection`);
+      return null;
     }
   }
 
-  // Remove a platform's account(s) from the DB and clear local UI state.
+  // Remove a platform's account from the DB and clear local UI state. Only
+  // single-account platforms go through here — YouTube is multi-account and
+  // disconnects per channel via disconnectYouTube.
   async function removeAccounts(...platforms) {
     for (const p of platforms) {
-      const id = accountIds[p];
-      if (id) await deleteAccount(id);
+      if (accountIds[p]) await deleteAccount(accountIds[p]);
     }
     setAccountIds((prev) => {
       const next = { ...prev };
@@ -581,11 +617,14 @@ export default function ConnectPage() {
     window.location.href = buildYouTubeAuthUrl();
   }
 
-  function disconnectYouTube() {
-    removeAccounts("youtube");
-    setYtToken(null);
-    setYtChannel(null);
-    setYtError(null);
+  function disconnectYouTube(accountId) {
+    deleteAccount(accountId);
+    setYtAccounts((prev) => prev.filter((a) => a._id !== accountId));
+    setYtChannels((prev) => {
+      const next = { ...prev };
+      delete next[accountId];
+      return next;
+    });
   }
 
   function connectThreads() {
@@ -661,10 +700,14 @@ export default function ConnectPage() {
       name: "YouTube",
       Icon: FaYoutube,
       isYouTube: true,
-      connected: Boolean(ytToken),
-      account: ytChannel?.title || "YouTube Channel",
+      connected: ytAccounts.length > 0,
+      account:
+        ytAccounts.length > 0
+          ? `${ytAccounts.length} channel${ytAccounts.length > 1 ? "s" : ""} connected`
+          : "YouTube Channel",
       onConnect: connectYouTube,
-      onDisconnect: disconnectYouTube,
+      onDisconnect: null,
+      allowMultiple: true,
     },
     {
       name: "Instagram",
@@ -851,7 +894,7 @@ export default function ConnectPage() {
                   </div>
                 </div>
 
-                {platform.connected ? (
+                {platform.connected && !platform.allowMultiple ? (
                   <button
                     onClick={platform.onDisconnect}
                     className="btn btn-danger w-full shrink-0 sm:w-auto"
@@ -864,7 +907,9 @@ export default function ConnectPage() {
                     disabled={!platform.onConnect}
                     className="btn btn-primary w-full shrink-0 sm:w-auto"
                   >
-                    Connect
+                    {platform.connected && platform.allowMultiple
+                      ? "Add Channel"
+                      : "Connect"}
                   </button>
                 )}
               </div>
@@ -981,54 +1026,76 @@ export default function ConnectPage() {
                 </div>
               )}
 
-              {platform.isYouTube && platform.connected && (
+              {platform.isYouTube && (
                 <div className="relative mt-5 border-t border-white/10 pt-5">
-                  {ytLoading && !ytChannel ? (
+                  {ytAccounts.length === 0 && !ytPendingToken ? (
                     <p className="text-sm text-slate-500">
-                      Loading YouTube channel…
+                      No YouTube channels connected yet.
                     </p>
-                  ) : ytError ? (
-                    <p className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-200">
-                      {ytError} — try reconnecting (Google tokens expire after
-                      about an hour).
-                    </p>
-                  ) : ytChannel ? (
-                    <div className="flex items-center gap-4">
-                      {ytChannel.thumbnail ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={ytChannel.thumbnail}
-                          alt={ytChannel.title}
-                          className="app-img h-12 w-12 rounded-full object-cover ring-2 ring-rose-400/20"
-                        />
-                      ) : (
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/5 text-lg font-semibold text-slate-300">
-                          {ytChannel.title?.[0] ?? "?"}
-                        </div>
-                      )}
+                  ) : (
+                    <div className="space-y-3">
+                      {ytAccounts.map((acct) => {
+                        const channel = ytChannels[acct._id];
+                        return (
+                          <div
+                            key={acct._id}
+                            className="flex items-center gap-4 rounded-xl border border-white/5 bg-white/[0.03] p-3"
+                          >
+                            {channel?.thumbnail ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={channel.thumbnail}
+                                alt={channel.title}
+                                className="app-img h-12 w-12 rounded-full object-cover ring-2 ring-rose-400/20"
+                              />
+                            ) : (
+                              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/5 text-lg font-semibold text-slate-300">
+                                {channel?.title?.[0] ?? acct.platformName?.[0] ?? "?"}
+                              </div>
+                            )}
 
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-white">
-                          {ytChannel.title}
-                        </p>
-                        <p className="truncate text-sm text-slate-400">
-                          {ytChannel.subscribers != null
-                            ? `${Number(
-                                ytChannel.subscribers
-                              ).toLocaleString()} subscribers`
-                            : ""}
-                          {ytChannel.videoCount != null
-                            ? ` · ${Number(
-                                ytChannel.videoCount
-                              ).toLocaleString()} videos`
-                            : ""}
-                        </p>
-                        <p className="truncate text-xs text-slate-500">
-                          ID: {ytChannel.id}
-                        </p>
-                      </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-medium text-white">
+                                {channel?.title || acct.platformName}
+                              </p>
+                              <p className="truncate text-sm text-slate-400">
+                                {channel?.subscribers != null
+                                  ? `${Number(channel.subscribers).toLocaleString()} subscribers`
+                                  : ""}
+                                {channel?.videoCount != null
+                                  ? ` · ${Number(channel.videoCount).toLocaleString()} videos`
+                                  : ""}
+                              </p>
+                              <p className="truncate text-xs text-slate-500">
+                                ID: {acct.platformId}
+                              </p>
+                            </div>
+
+                            <button
+                              onClick={() => disconnectYouTube(acct._id)}
+                              className="btn btn-danger shrink-0"
+                            >
+                              Disconnect
+                            </button>
+                          </div>
+                        );
+                      })}
+
+                      {ytPendingToken && (
+                        <>
+                          {ytLoading ? (
+                            <p className="text-sm text-slate-500">
+                              Connecting new YouTube channel…
+                            </p>
+                          ) : ytError ? (
+                            <p className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-200">
+                              {ytError} — try reconnecting.
+                            </p>
+                          ) : null}
+                        </>
+                      )}
                     </div>
-                  ) : null}
+                  )}
                 </div>
               )}
 

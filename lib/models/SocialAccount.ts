@@ -31,7 +31,7 @@ const SocialAccountSchema = new Schema<ISocialAccount>(
   { timestamps: true }
 );
 
-SocialAccountSchema.index({ userId: 1, platform: 1 }, { unique: true });
+SocialAccountSchema.index({ userId: 1, platform: 1, platformId: 1 }, { unique: true });
 SocialAccountSchema.index({ userId: 1 });
 
 export default mongoose.models.SocialAccount || mongoose.model<ISocialAccount>("SocialAccount", SocialAccountSchema);

@@ -13,8 +13,14 @@ const EXPIRY_SKEW_MS = 60 * 1000;
 
 // Return a valid access token for a platform account, refreshing YouTube's when
 // it has expired. Returns null if there's no account or no usable token.
-export async function resolvePlatformToken(userId: string, platform: string) {
-  const account = await SocialAccount.findOne({ userId, platform });
+// Pass an optional platformId to target a specific channel (for users with
+// multiple YouTube channels) — that's the channel id ("UC..."), which is what
+// a post target carries as its destinationId.
+export async function resolvePlatformToken(userId: string, platform: string, platformId?: string) {
+  const query: Record<string, unknown> = { userId, platform };
+  if (platformId) query.platformId = platformId;
+
+  const account = await SocialAccount.findOne(query);
   if (!account) return { token: null, account: null };
 
   if (platform !== "youtube") {

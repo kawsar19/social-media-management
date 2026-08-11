@@ -36,10 +36,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
-    const account = await SocialAccount.findOne({
-      userId: user.userId,
-      platform: "youtube",
-    });
+    const { searchParams } = new URL(request.url);
+    const accountId = searchParams.get("accountId") || undefined;
+
+    const query: Record<string, unknown> = { userId: user.userId, platform: "youtube" };
+    if (accountId) query._id = accountId;
+
+    const account = await SocialAccount.findOne(query);
     if (!account) {
       return NextResponse.json({ error: "not_connected" }, { status: 404 });
     }

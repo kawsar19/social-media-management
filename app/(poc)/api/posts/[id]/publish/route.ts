@@ -232,7 +232,11 @@ async function* runPublish(
   for (const target of post.targets) {
     if (fbHandled.has(target)) continue;
 
-    const { token } = await resolvePlatformToken(userId, target.platform);
+    const { token } = await resolvePlatformToken(
+      userId,
+      target.platform,
+      target.platform === "youtube" ? target.destinationId : undefined
+    );
     if (!token) {
       target.status = "failed";
       target.error = `no_${target.platform}_token`;

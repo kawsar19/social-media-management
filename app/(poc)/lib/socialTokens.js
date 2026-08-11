@@ -123,11 +123,15 @@ export async function getAccountsMap() {
 // A guaranteed-fresh YouTube access token. Hits /api/auth/youtube/token, which
 // refreshes server-side via the stored refresh_token when the token has
 // expired. Returns the accessToken string or throws with a reason (e.g.
-// reauth_required).
-export async function getYouTubeToken() {
+// reauth_required). Pass an optional accountId to refresh a specific channel's
+// token (for users with multiple connected YouTube channels).
+export async function getYouTubeToken(accountId) {
   const jwt = getAppToken();
   if (!jwt) throw new Error("not_logged_in");
-  const res = await fetch("/api/auth/youtube/token", {
+  const url = accountId
+    ? `/api/auth/youtube/token?accountId=${encodeURIComponent(accountId)}`
+    : "/api/auth/youtube/token";
+  const res = await fetch(url, {
     headers: authHeaders(),
     cache: "no-store",
   });

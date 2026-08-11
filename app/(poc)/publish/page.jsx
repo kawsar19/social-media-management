@@ -18,7 +18,12 @@ import {
   formatDuration,
   platformsOverLimit,
 } from "../lib/mediaLimits";
-import { getAccountsMap, getYouTubeToken, uploadMedia } from "../lib/socialTokens";
+import {
+  fetchAccounts,
+  getAccountsMap,
+  getYouTubeToken,
+  uploadMedia,
+} from "../lib/socialTokens";
 import { generateImageFile } from "../lib/imageGeneration";
 import { createPost, publishPostStream } from "../lib/posts";
 import LinkedInFormatter from "../components/LinkedInFormatter";
@@ -109,6 +114,12 @@ export default function PublishPage() {
   const [ytTitle, setYtTitle] = useState("");
   const [ytPrivacy, setYtPrivacy] = useState("private");
 
+  // Connected YouTube channels ({ _id, platformId, platformName }) and which
+  // ones to publish to. A user can connect several channels, so this mirrors
+  // the Facebook Pages pattern: one target per checked channel.
+  const [ytChannels, setYtChannels] = useState([]);
+  const [selectedYtIds, setSelectedYtIds] = useState([]);
+
   // Per-destination publish progress, in the order the server publishes them.
   // Empty until a publish starts. An array rather than a map because Facebook
   // contributes one step per Page, so the platform alone isn't a unique key.
@@ -119,12 +130,17 @@ export default function PublishPage() {
 
   // Load platform tokens from the DB. YouTube uses the refresh endpoint so an
   // expired token is renewed server-side; the Threads user id is its platformId.
+  //
+  // fetchAccounts() (the full list) is read alongside getAccountsMap() because
+  // the map keeps only one account per platform — that's fine for the
+  // single-account platforms but would hide all but one YouTube channel.
   useEffect(() => {
     let cancelled = false;
     Promise.all([
       getAccountsMap(),
+      fetchAccounts(),
       getYouTubeToken().catch(() => null),
-    ]).then(([map, ytToken]) => {
+    ]).then(([map, accounts, ytToken]) => {
       if (cancelled) return;
       setTokens({
         linkedin: map.linkedin?.accessToken || null,
@@ -135,6 +151,12 @@ export default function PublishPage() {
       // Keep each platform's { platformId, platformName } to show the post
       // destination in the UI. (Facebook lists Pages separately below.)
       setAccountMeta(map);
+
+      const yt = accounts.filter((a) => a.platform === "youtube");
+      setYtChannels(yt);
+      // Default to every channel checked, matching the platform toggles which
+      // all start on. The user unchecks what they don't want.
+      setSelectedYtIds(yt.map((a) => a.platformId));
     });
     return () => {
       cancelled = true;
@@ -278,12 +300,23 @@ export default function PublishPage() {
     );
   }
 
+  function toggleYtChannel(channelId) {
+    setSelectedYtIds((prev) =>
+      prev.includes(channelId)
+        ? prev.filter((c) => c !== channelId)
+        : [...prev, channelId]
+    );
+  }
+
   const connected = {
     linkedin: Boolean(tokens.linkedin),
     facebook: Boolean(tokens.facebook),
     // Instagram rides on the Facebook token + needs a linked IG account.
     instagram: Boolean(tokens.facebook) && igAccounts.length > 0,
-    youtube: Boolean(tokens.youtube),
+    // Any connected channel counts. The per-channel tokens are resolved
+    // server-side at publish time, so tokens.youtube (which is only the first
+    // channel's) isn't what decides this.
+    youtube: ytChannels.length > 0,
     // User id is optional — the share route falls back to `/me`.
     threads: Boolean(tokens.threads),
   };
@@ -303,6 +336,18 @@ export default function PublishPage() {
         name,
         subId: acc.id,
         url: acc.username ? `https://instagram.com/${acc.username}` : null,
+      };
+    }
+    if (id === "youtube") {
+      // With one channel connected this is that channel; the multi-channel case
+      // is shown by the checkbox list instead of a single destination line.
+      const ch =
+        ytChannels.find((c) => c.platformId === selectedYtIds[0]) || ytChannels[0];
+      if (!ch) return null;
+      return {
+        name: ch.platformName || "YouTube Channel",
+        subId: ch.platformId,
+        url: ch.platformId ? `https://youtube.com/channel/${ch.platformId}` : null,
       };
     }
     const meta = accountMeta[id];
@@ -361,13 +406,18 @@ export default function PublishPage() {
     selected.facebook && connected.facebook && selectedPageIds.length === 0;
   const ytNeedsTitle =
     selected.youtube && connected.youtube && hasVideo && !ytTitle.trim();
+  // Same shape as fbNeedsPage: YouTube is selected and would run, but every
+  // channel is unchecked, so there'd be nowhere to publish it.
+  const ytNeedsChannel =
+    selected.youtube && connected.youtube && hasVideo && selectedYtIds.length === 0;
   const canPublish =
     !publishing &&
     !uploading &&
     activeTargets.length > 0 &&
     hasContent &&
     !fbNeedsPage &&
-    !ytNeedsTitle;
+    !ytNeedsTitle &&
+    !ytNeedsChannel;
 
   // Build the DB target list from the current selection. Facebook expands to one
   // target per selected Page (each a distinct destination); Instagram carries
@@ -394,6 +444,20 @@ export default function PublishPage() {
           destinationId: acc?.id,
           destinationName: acc?.username ? `@${acc.username}` : acc?.name,
         });
+        continue;
+      }
+      if (p.id === "youtube") {
+        // One target per checked channel. destinationId is the channel id,
+        // which the publish route resolves to that channel's own token.
+        for (const channelId of selectedYtIds) {
+          const ch = ytChannels.find((c) => c.platformId === channelId);
+          targets.push({
+            platform: "youtube",
+            accountName: ch?.platformName,
+            destinationId: channelId,
+            destinationName: ch?.platformName,
+          });
+        }
         continue;
       }
       const meta = accountMeta[p.id];
@@ -600,6 +664,19 @@ export default function PublishPage() {
                             : "Pick Pages below"
                           : "Off"}
                       </p>
+                    ) : id === "youtube" && ytChannels.length > 1 ? (
+                      // Several channels connected — they're picked below, same
+                      // as Facebook Pages. With only one there's nothing to
+                      // choose, so fall through to the single-destination line.
+                      <p className="truncate text-xs text-slate-400">
+                        {isOn
+                          ? selectedYtIds.length > 0
+                            ? `${selectedYtIds.length} channel${
+                                selectedYtIds.length > 1 ? "s" : ""
+                              } selected`
+                            : "Pick channels below"
+                          : "Off"}
+                      </p>
                     ) : (
                       (() => {
                         const dest = destinationFor(id);
@@ -722,6 +799,38 @@ export default function PublishPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* YouTube channel picker — only when more than one channel is
+            connected; with a single channel there's nothing to choose. */}
+        {selected.youtube && connected.youtube && ytChannels.length > 1 && (
+          <div className="mb-5 rounded-xl border border-white/10 bg-white/5 p-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-rose-400">
+              YouTube — which channels?
+            </p>
+            <div className="grid max-h-40 gap-2 overflow-y-auto sm:grid-cols-2">
+              {ytChannels.map((ch) => (
+                <label
+                  key={ch.platformId}
+                  className="flex cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-2.5 transition-colors hover:border-rose-400/40 hover:bg-rose-400/10"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedYtIds.includes(ch.platformId)}
+                    onChange={() => toggleYtChannel(ch.platformId)}
+                    className="h-4 w-4 accent-rose-400"
+                  />
+                  <span className="truncate text-sm text-slate-300">
+                    {ch.platformName || ch.platformId}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-slate-500">
+              The same video, title, and privacy setting are used for every
+              checked channel.
+            </p>
           </div>
         )}
 
@@ -1107,6 +1216,9 @@ export default function PublishPage() {
         )}
         {ytNeedsTitle && (
           <p className="mt-3 text-sm text-amber-300">Add a YouTube title for the video.</p>
+        )}
+        {ytNeedsChannel && (
+          <p className="mt-3 text-sm text-amber-300">Select at least one YouTube channel.</p>
         )}
 
         {/* Publish stepper. Each destination is a step, in the order the server
