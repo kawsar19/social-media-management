@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveMediaFile } from "@/app/(poc)/api/posts/[id]/publish/publishHelpers";
 
 // Resumable upload endpoint for YouTube videos. uploadType=resumable does the
 // two-step flow: (1) POST metadata to open a session, (2) PUT the bytes to the
@@ -39,7 +40,9 @@ export async function POST(request) {
   const token = auth.slice("Bearer ".length);
 
   const form = await request.formData().catch(() => null);
-  const video = form?.get("video");
+  // Either a posted File or, when the caller sent a `mediaUrl`, bytes fetched
+  // from R2 here — see resolveMediaFile for why the publish route sends a URL.
+  const video = await resolveMediaFile(form, "video");
   const title = form?.get("title")?.toString().trim() ?? "";
   const description = form?.get("description")?.toString() ?? "";
   let privacy = form?.get("privacy")?.toString() ?? "private";

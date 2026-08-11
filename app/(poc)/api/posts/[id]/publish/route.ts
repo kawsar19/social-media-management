@@ -4,7 +4,6 @@ import Post from "@/lib/models/Post";
 import { getUser } from "../../postSchema";
 import {
   resolvePlatformToken,
-  fetchMediaBlob,
   permalinkFor,
   scheduleMediaCleanup,
 } from "./publishHelpers";
@@ -42,8 +41,6 @@ type Ctx = {
   origin: string;
   userId: string;
   post: any;
-  mediaBlob: Blob | null;
-  mediaName: string;
 };
 
 function shareUrl(origin: string, platform: string) {
@@ -51,23 +48,26 @@ function shareUrl(origin: string, platform: string) {
 }
 
 async function publishFileTarget(ctx: Ctx, target: any, token: string) {
-  const { post, origin, mediaBlob, mediaName } = ctx;
+  const { post, origin } = ctx;
   const fd = new FormData();
 
+  // Send the R2 URL, not the bytes. These share routes live in this same app,
+  // so handing them a file means POSTing it across a serverless function
+  // boundary — where the request body is capped at 4.5 MB and anything larger
+  // is rejected before the route runs. Passing the URL keeps this request tiny
+  // and lets each route stream the media from R2 itself.
+  if (post.mediaUrl) fd.append("mediaUrl", post.mediaUrl);
+
   if (target.platform === "youtube") {
-    if (!mediaBlob) return { ok: false, error: "youtube_requires_video" };
-    fd.append("video", mediaBlob, mediaName);
+    if (!post.mediaUrl) return { ok: false, error: "youtube_requires_video" };
     fd.append("title", post.youtubeTitle || post.content.slice(0, 90) || "Untitled");
     fd.append("description", post.content || "");
     fd.append("privacy", post.youtubePrivacy || "private");
   } else {
     // linkedin
     fd.append("text", post.content || "");
-    if (mediaBlob) {
-      if (post.mediaType === "video") fd.append("video", mediaBlob, mediaName);
-      else fd.append("image", mediaBlob, mediaName);
-    }
   }
+  if (post.mediaType) fd.append("mediaType", post.mediaType);
 
   const res = await fetch(shareUrl(origin, target.platform), {
     method: "POST",
@@ -159,10 +159,9 @@ async function* runPublish(
   post.status = "publishing";
   await post.save();
 
-  // Download media once for the file-upload platforms.
-  const mediaBlob = await fetchMediaBlob(post.mediaUrl);
-  const mediaName = post.mediaType === "video" ? "upload.mp4" : "upload.jpg";
-  const ctx: Ctx = { origin, userId, post, mediaBlob, mediaName };
+  // No media download here any more: every share route is handed the R2 URL and
+  // fetches the bytes itself, so the file never crosses a function boundary.
+  const ctx: Ctx = { origin, userId, post };
 
   // Facebook: all its targets (one per Page) publish in a single share call,
   // then we map the per-Page results back onto each target by pageId.
@@ -184,10 +183,9 @@ async function* runPublish(
       }
       const fd = new FormData();
       fd.append("text", post.content || "");
-      if (mediaBlob) {
-        if (post.mediaType === "video") fd.append("video", mediaBlob, mediaName);
-        else fd.append("image", mediaBlob, mediaName);
-      }
+      // URL rather than bytes — see the note in publishFileTarget.
+      if (post.mediaUrl) fd.append("mediaUrl", post.mediaUrl);
+      if (post.mediaType) fd.append("mediaType", post.mediaType);
       fd.append(
         "pageIds",
         JSON.stringify(fbTargets.map((t: any) => t.destinationId).filter(Boolean))

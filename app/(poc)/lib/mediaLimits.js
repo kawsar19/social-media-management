@@ -49,22 +49,25 @@ export const PLATFORM_MEDIA_LIMITS = {
   },
 };
 
-// What our own publish pipeline can carry, and the lowest ceiling in practice.
+// What our own publish pipeline can carry, and by far the lowest ceiling here.
 //
-// The upload itself is no longer the constraint: the browser PUTs straight to
-// R2, so nothing passes through a serverless function on the way in. What binds
-// is publishing. The publish route downloads the media into a Blob once and
-// shares that one Blob across every byte-uploading target (YouTube, LinkedIn,
-// Facebook), so peak memory is roughly one copy of the file rather than one per
-// platform. Instagram and Threads add nothing — they fetch by URL.
+// Uploading is no longer the constraint — the browser PUTs straight to R2, so
+// nothing passes through a serverless function on the way in. Publishing is.
+// The publish route hands the media to each byte-uploading platform (YouTube,
+// LinkedIn, Facebook) by POSTing it to that platform's own route in this same
+// app, and a serverless function's request body is capped at 4.5 MB. Past that
+// the internal call is rejected before the route runs, which surfaces as a bare
+// "publish_failed" on exactly those three platforms.
 //
-// 500 MB keeps that single copy well inside a serverless function's memory
-// while covering ordinary social video. Going meaningfully higher means
-// streaming R2 -> platform instead of buffering, which is a larger change.
+// That cap no longer applies: the publish route sends each share route the R2
+// URL and the route fetches the bytes itself, so the file goes R2 -> platform
+// without ever crossing a function boundary. Only small form fields do.
 //
-// Note this is still under every platform's own limit (Instagram and Threads
-// are the tightest at 1 GB), so it remains the binding constraint.
-export const PIPELINE_MAX_BYTES = 500 * MB;
+// What binds now is time and memory inside one publish request — the media is
+// pulled from R2 and pushed to each byte-uploading platform within the route's
+// maxDuration (299s, the plan's own maximum). 200 MB is comfortable there;
+// materially larger videos want publishing moved off the request path.
+export const PIPELINE_MAX_BYTES = 200 * MB;
 
 export function formatBytes(bytes) {
   if (bytes >= GB) {

@@ -58,6 +58,47 @@ export async function resolvePlatformToken(userId: string, platform: string, pla
   return { token: account.accessToken, account };
 }
 
+// Resolve the media a share route should upload, from either shape its caller
+// might send: a `mediaUrl` field (what the publish route sends now) or a File
+// posted directly (what a client form still does).
+//
+// The URL path exists because these routes are serverless functions with a
+// 4.5 MB request-body cap. Posting a video to them from another route in this
+// app hit that wall and failed before the route ran, so the publish route sends
+// the URL and each route fetches the bytes here instead — the file goes R2 ->
+// platform without crossing a function boundary.
+//
+// Returns a File ready for FormData, or null when there's no media.
+export async function resolveMediaFile(
+  form: FormData | null,
+  field: "image" | "video"
+): Promise<File | null> {
+  // A directly-posted file wins: the caller already has the bytes in hand.
+  const direct = form?.get(field);
+  if (direct && typeof direct === "object" && "arrayBuffer" in direct) {
+    return direct as File;
+  }
+
+  const mediaUrl = form?.get("mediaUrl");
+  if (typeof mediaUrl !== "string" || !mediaUrl) return null;
+
+  // Only fetch the kind of media the caller asked for, so a route handling an
+  // image request doesn't download a video it will then ignore.
+  const mediaType = form?.get("mediaType");
+  const isVideo =
+    mediaType === "video" || /\.(mp4|mov|m4v|webm|mpeg)(\?|$)/i.test(mediaUrl);
+  if (field === "video" && !isVideo) return null;
+  if (field === "image" && isVideo) return null;
+
+  const blob = await fetchMediaBlob(mediaUrl);
+  if (!blob) return null;
+
+  const name = isVideo ? "upload.mp4" : "upload.jpg";
+  return new File([blob], name, {
+    type: blob.type || (isVideo ? "video/mp4" : "image/jpeg"),
+  });
+}
+
 // Download the stored media URL into a Blob so it can be re-uploaded to
 // platforms that require raw bytes. Returns null on any failure.
 export async function fetchMediaBlob(mediaUrl?: string) {

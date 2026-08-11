@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveMediaFile } from "@/app/(poc)/api/posts/[id]/publish/publishHelpers";
 
 const GRAPH_VERSION = process.env.FACEBOOK_GRAPH_VERSION || "v25.0";
 const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
@@ -113,8 +114,10 @@ export async function POST(request) {
 
   const form = await request.formData().catch(() => null);
   const text = form?.get("text")?.toString() ?? "";
-  const image = form?.get("image"); // File or null
-  const video = form?.get("video"); // File or null
+  // Either a posted File or, when the caller sent a `mediaUrl`, bytes fetched
+  // from R2 here — see resolveMediaFile for why the publish route sends a URL.
+  const image = await resolveMediaFile(form, "image");
+  const video = await resolveMediaFile(form, "video");
 
   let pageIds = [];
   try {
