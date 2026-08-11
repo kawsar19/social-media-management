@@ -39,9 +39,9 @@ import {
   getYouTubeToken,
   uploadMedia,
 } from "../lib/socialTokens";
-import { generateImageFile } from "../lib/imageGeneration";
 import { createPost, publishPostStream } from "../lib/posts";
 import AiPostWriter from "../components/AiPostWriter";
+import AiImageGenerator from "../components/AiImageGenerator";
 import LinkedInFormatter from "../components/LinkedInFormatter";
 import LinkedInPreview from "../components/LinkedInPreview";
 
@@ -116,14 +116,14 @@ export default function PublishPage() {
   const [preview, setPreview] = useState(null); // object URL
   const [video, setVideo] = useState(null); // File
 
-  // AI image generation — prompt + status for the "Generate image" control.
-  const [imagePrompt, setImagePrompt] = useState("");
-  const [generating, setGenerating] = useState(false);
-  const [genError, setGenError] = useState("");
-
   // AI post writing — the brief and options live in the modal; the page only
   // tracks whether it's open and takes the accepted text back into `text`.
   const [writerOpen, setWriterOpen] = useState(false);
+
+  // AI image generation — the prompt, shape, and style live in the modal; the
+  // page only tracks whether it's open and takes the accepted image back as a
+  // File, the same shape a picked file has.
+  const [imageGenOpen, setImageGenOpen] = useState(false);
 
   // Facebook Pages to post to.
   const [fbPages, setFbPages] = useState([]);
@@ -275,24 +275,14 @@ export default function PublishPage() {
     clearMediaUrl();
   }
 
-  // Generate an image from the prompt and set it as the post image. Uses the
-  // global generateImageFile helper so the same call works anywhere.
-  async function onGenerateImage() {
-    const prompt = imagePrompt.trim();
-    if (!prompt || generating) return;
-    setGenerating(true);
-    setGenError("");
-    try {
-      const file = await generateImageFile(prompt);
-      clearVideo();
-      setImage(file);
-      setPreview(URL.createObjectURL(file));
-      uploadForMedia(file);
-    } catch (err) {
-      setGenError(err?.message || "Failed to generate image");
-    } finally {
-      setGenerating(false);
-    }
+  // Take an accepted image from the generator modal. It arrives as a File, so
+  // from here on it's handled exactly like a picked file — same preview, same
+  // R2 upload, same publish path.
+  function onGeneratedImage(file) {
+    clearVideo();
+    setImage(file);
+    setPreview(URL.createObjectURL(file));
+    uploadForMedia(file);
   }
 
   function onPickVideo(e) {
@@ -598,8 +588,6 @@ export default function PublishPage() {
     clearVideo();
     clearMediaUrl();
     setYtTitle("");
-    setImagePrompt("");
-    setGenError("");
   }
 
   const anyConnected =
@@ -994,42 +982,20 @@ export default function PublishPage() {
                   </div>
                 )}
 
-                {/* AI image generation, tucked under the media row it feeds. */}
+                {/* AI image generation, tucked under the media row it feeds.
+                    The prompt and options live in a modal — there are too many
+                    of them to sit inline without burying the composer. */}
                 {!video && (
-                  <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
-                    <input
-                      type="text"
-                      value={imagePrompt}
-                      onChange={(e) => setImagePrompt(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          onGenerateImage();
-                        }
-                      }}
-                      placeholder="Or describe an image for AI to generate…"
-                      disabled={generating}
-                      className="field w-full text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={onGenerateImage}
-                      disabled={generating || !imagePrompt.trim()}
-                      className="btn btn-ghost shrink-0"
-                    >
-                      {generating ? (
-                        <>
-                          <FiLoader className="h-4 w-4 animate-spin" /> Generating…
-                        </>
-                      ) : (
-                        <>
-                          <FiZap className="h-4 w-4" /> Generate
-                        </>
-                      )}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setImageGenOpen(true)}
+                    disabled={publishing || uploading}
+                    className="ai-toggle is-on mt-2.5"
+                  >
+                    <FiZap className="h-3.5 w-3.5" />
+                    {image ? "Generate a different image" : "Generate an image with AI"}
+                  </button>
                 )}
-                {genError && <p className="pc-note pc-note-err mt-2">{genError}</p>}
 
                 {/* Upload progress. */}
                 {uploading && (
@@ -1402,6 +1368,15 @@ export default function PublishPage() {
         onUse={setText}
         platforms={activeTargets.map((p) => p.id)}
         current={text}
+      />
+
+      {/* AI image generator. Given the post's text so it can suggest a prompt
+          that matches what the post is actually about. */}
+      <AiImageGenerator
+        open={imageGenOpen}
+        onClose={() => setImageGenOpen(false)}
+        onUse={onGeneratedImage}
+        postText={text}
       />
 
       <p className="pretty mt-6 text-sm text-slate-500">
