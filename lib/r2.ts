@@ -43,6 +43,13 @@ function getClient() {
         accessKeyId: ACCESS_KEY_ID!,
         secretAccessKey: SECRET_ACCESS_KEY!,
       },
+      // Newer AWS SDKs add a CRC32 checksum to every request. On a presigned
+      // PUT that lands in the signed URL as x-amz-checksum-crc32 computed from
+      // an empty body — the browser then sends the real file, the checksums
+      // disagree, and R2 rejects the upload. R2 doesn't require these headers,
+      // so turn them off and let the signature alone authorise the request.
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
     });
   }
   return client;
