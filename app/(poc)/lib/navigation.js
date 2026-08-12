@@ -7,6 +7,10 @@
 //
 // Each section groups related routes. Each route is { href, label, Icon, desc }.
 // `desc` is a short blurb shown on the dashboard cards (optional).
+//
+// Set `disabled: true` on a route to hide it from the sidebar and the dashboard
+// cards while keeping the page itself reachable by URL. Use it for work that
+// isn't ready to be shown yet; delete the flag to bring the route back.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
@@ -41,9 +45,11 @@ export const NAV_SECTIONS = [
     label: "Content",
     Icon: FiEdit3,
     items: [
-      { href: "/post", label: "Compose", Icon: FiEdit3, desc: "Write a post for every platform at once." },
-      { href: "/publish", label: "Publish All", Icon: FiSend, desc: "Push your draft out to all destinations." },
-      { href: "/profile/posts", label: "Saved Posts", Icon: FiArchive, desc: "Drafts and posts you saved for later." },
+      // Hidden from the nav for now — still being worked on. The pages remain
+      // reachable directly by URL; remove `disabled` to list them again.
+      { href: "/post", label: "Compose", Icon: FiEdit3, desc: "Write a post for every platform at once.", disabled: true },
+      { href: "/publish", label: "Publish All", Icon: FiSend, desc: "Push your draft out to all destinations.", disabled: false },
+      { href: "/profile/posts", label: "Saved Posts", Icon: FiArchive, desc: "Drafts and posts you saved for later.", disabled: true },
     ],
   },
   {
@@ -80,5 +86,15 @@ export const NAV_SECTIONS = [
   },
 ];
 
-// Flat list of every route, handy for lookups / search.
+// Flat list of every route, handy for lookups / search. Includes disabled ones,
+// since a hidden route is still a real page that may need to be resolved.
 export const ALL_ROUTES = NAV_SECTIONS.flatMap((s) => s.items);
+
+// What the navigation surfaces actually render: disabled routes dropped, and
+// any section left with nothing in it removed so no empty heading is shown.
+// Both the sidebar and the dashboard cards read this rather than NAV_SECTIONS,
+// so hiding a route takes effect in one place.
+export const VISIBLE_NAV_SECTIONS = NAV_SECTIONS.map((section) => ({
+  ...section,
+  items: section.items.filter((item) => !item.disabled),
+})).filter((section) => section.items.length > 0);

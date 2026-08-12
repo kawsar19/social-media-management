@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { FiUser, FiArchive, FiSend, FiLink, FiEdit3, FiClock, FiCheckCircle, FiAlertTriangle } from "react-icons/fi";
+import { FiUser, FiLink, FiEdit3, FiClock, FiCheckCircle, FiAlertTriangle } from "react-icons/fi";
 import { useAuth } from "../components/AuthProvider";
 import { listPosts } from "../lib/posts";
 import { fetchAccounts } from "../lib/socialTokens";
@@ -78,22 +78,12 @@ export default function ProfilePage() {
         ))}
       </div>
 
-      {/* Quick actions */}
+      {/* Quick actions. The Saved Posts and Publish cards are omitted while
+          those routes are hidden from the nav (see `disabled` in
+          lib/navigation) — leaving them here would be a second way in to
+          pages we've deliberately taken down. Restore them alongside the
+          nav entries. */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Link href="/profile/posts" className="glass glass-hover rounded-2xl p-6">
-          <FiArchive className="h-6 w-6 text-violet-400" />
-          <h2 className="mt-3 font-semibold text-white">Saved Posts</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            View, edit, publish, or delete your drafts and published posts.
-          </p>
-        </Link>
-        <Link href="/publish" className="glass glass-hover rounded-2xl p-6">
-          <FiSend className="h-6 w-6 text-sky-400" />
-          <h2 className="mt-3 font-semibold text-white">Publish</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Compose once and publish everywhere, or save it for later.
-          </p>
-        </Link>
         <Link href="/connect" className="glass glass-hover rounded-2xl p-6">
           <FiLink className="h-6 w-6 text-emerald-400" />
           <h2 className="mt-3 font-semibold text-white">Connect</h2>

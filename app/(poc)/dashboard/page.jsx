@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { FiArrowRight, FiGrid } from "react-icons/fi";
-import { NAV_SECTIONS } from "../lib/navigation";
+import { VISIBLE_NAV_SECTIONS } from "../lib/navigation";
 
 // Cards on the landing grid — everything except the Overview/Dashboard entry
 // itself (no point linking the dashboard to the dashboard).
-const CARD_SECTIONS = NAV_SECTIONS.filter((s) => s.label !== "Overview");
+const CARD_SECTIONS = VISIBLE_NAV_SECTIONS.filter((s) => s.label !== "Overview");
 
 export default function DashboardPage() {
   return (

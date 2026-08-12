@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FiChevronDown, FiChevronsLeft, FiChevronsRight, FiX, FiMenu } from "react-icons/fi";
-import { NAV_SECTIONS } from "../lib/navigation";
+import { VISIBLE_NAV_SECTIONS } from "../lib/navigation";
 
 // A single collapsible section (group of routes).
 function Section({ section, pathname, collapsed, onNavigate }) {
@@ -94,7 +94,7 @@ function Section({ section, pathname, collapsed, onNavigate }) {
 function NavBody({ pathname, collapsed, onNavigate }) {
   return (
     <nav className={"flex flex-col gap-1 " + (collapsed ? "px-2 py-3" : "p-3")}>
-      {NAV_SECTIONS.map((section) => (
+      {VISIBLE_NAV_SECTIONS.map((section) => (
         <Section
           key={section.label}
           section={section}
