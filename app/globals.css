@@ -1181,3 +1181,58 @@ body {
     flex: 1 1 auto;
   }
 }
+
+/* Legal documents (privacy, terms, data deletion). These pages are long-form
+   prose rather than app UI, so they get typographic defaults here instead of
+   repeating the same utility classes on every heading and paragraph. */
+.legal-body {
+  color: rgb(148 163 184);
+  line-height: 1.7;
+}
+.legal-body h2 {
+  margin-top: 2.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #fff;
+  scroll-margin-top: 5rem;
+}
+.legal-body h3 {
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: rgb(226 232 240);
+}
+.legal-body p {
+  margin-bottom: 1rem;
+}
+.legal-body ul {
+  margin-bottom: 1rem;
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+.legal-body li {
+  margin-bottom: 0.4rem;
+}
+.legal-body a {
+  color: rgb(125 211 252);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.legal-body a:hover {
+  color: rgb(186 230 253);
+}
+.legal-body strong {
+  color: rgb(226 232 240);
+  font-weight: 600;
+}
+:root[data-theme="light"] .legal-body {
+  color: rgb(71 85 105);
+}
+:root[data-theme="light"] .legal-body h2 {
+  color: rgb(15 23 42);
+}
+:root[data-theme="light"] .legal-body h3,
+:root[data-theme="light"] .legal-body strong {
+  color: rgb(30 41 59);
+}
