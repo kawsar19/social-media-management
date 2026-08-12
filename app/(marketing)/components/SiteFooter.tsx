@@ -1,81 +1,108 @@
 import Link from "next/link";
+import { FiZap } from "react-icons/fi";
+import {
+  FaLinkedin,
+  FaFacebook,
+  FaYoutube,
+  FaThreads,
+  FaInstagram,
+} from "react-icons/fa6";
 import { BUSINESS } from "../lib/business";
 
-// Footer for the public pages. Beyond looking finished, this is where the
+const platforms = [
+  { Icon: FaLinkedin, label: "LinkedIn" },
+  { Icon: FaFacebook, label: "Facebook" },
+  { Icon: FaInstagram, label: "Instagram" },
+  { Icon: FaThreads, label: "Threads" },
+  { Icon: FaYoutube, label: "YouTube" },
+];
+
+// Footer for the public pages. Beyond finishing the page, this is where the
 // legal links live — platform reviewers (Meta especially) look for a reachable
 // privacy policy and data-deletion route from the site's own pages, not just as
-// URLs pasted into a form.
+// URLs pasted into their form.
 export default function SiteFooter() {
   return (
-    <footer className="border-t border-white/10 bg-black/20">
-      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-        <div className="flex flex-col gap-8 sm:flex-row sm:justify-between">
-          <div className="max-w-xs">
-            <p className="text-sm font-semibold text-white">
-              {BUSINESS.product}
-            </p>
-            <p className="pretty mt-2 text-sm text-slate-400">
+    <footer className="relative mt-8 border-t border-[var(--glass-border)]">
+      {/* A faint wash so the footer reads as part of the page rather than a
+          slab bolted onto the bottom. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/[0.03] to-transparent"
+      />
+
+      <div className="relative mx-auto max-w-6xl px-4 py-14 sm:px-6">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Brand */}
+          <div className="lg:col-span-2">
+            <Link href="/" className="group inline-flex items-center gap-2.5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-rose-500 text-white shadow-lg shadow-indigo-500/25">
+                <FiZap className="h-4 w-4" />
+              </span>
+              <span className="font-semibold tracking-tight text-[var(--text-strong)]">
+                {BUSINESS.product}
+              </span>
+            </Link>
+            <p className="pretty mt-4 max-w-xs text-sm text-[var(--text-muted)]">
               Publish, moderate, and measure across every connected social
               account from one place.
             </p>
+
+            <div className="mt-5 flex items-center gap-3 text-[var(--text-muted)]">
+              {platforms.map(({ Icon, label }) => (
+                <span key={label} title={label}>
+                  <Icon className="h-4 w-4 transition-colors hover:text-[var(--text-strong)]" />
+                </span>
+              ))}
+            </div>
           </div>
 
-          <div className="flex gap-12">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Product
-              </p>
-              <ul className="mt-3 space-y-2 text-sm">
-                <li>
-                  <Link href="/login" className="text-slate-400 hover:text-white">
-                    Log in
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/signup" className="text-slate-400 hover:text-white">
-                    Sign up
-                  </Link>
-                </li>
-              </ul>
-            </div>
+          <div>
+            <p className="mk-eyebrow">Product</p>
+            <ul className="mt-4 space-y-2.5 text-sm">
+              <li>
+                <Link href="/signup" className="mk-flink">
+                  Create account
+                </Link>
+              </li>
+              <li>
+                <Link href="/login" className="mk-flink">
+                  Log in
+                </Link>
+              </li>
+            </ul>
+          </div>
 
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Legal
-              </p>
-              <ul className="mt-3 space-y-2 text-sm">
-                <li>
-                  <Link href="/privacy" className="text-slate-400 hover:text-white">
-                    Privacy Policy
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/terms" className="text-slate-400 hover:text-white">
-                    Terms of Service
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    href="/data-deletion"
-                    className="text-slate-400 hover:text-white"
-                  >
-                    Delete my data
-                  </Link>
-                </li>
-              </ul>
-            </div>
+          <div>
+            <p className="mk-eyebrow">Legal</p>
+            <ul className="mt-4 space-y-2.5 text-sm">
+              <li>
+                <Link href="/privacy" className="mk-flink">
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link href="/terms" className="mk-flink">
+                  Terms of Service
+                </Link>
+              </li>
+              <li>
+                <Link href="/data-deletion" className="mk-flink">
+                  Delete my data
+                </Link>
+              </li>
+            </ul>
           </div>
         </div>
 
-        <div className="mt-10 flex flex-col gap-2 border-t border-white/10 pt-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-12 flex flex-col gap-2 border-t border-[var(--glass-border)] pt-6 text-xs text-[var(--text-muted)] sm:flex-row sm:items-center sm:justify-between">
           <p>
             © {new Date().getFullYear()} {BUSINESS.name}. All rights reserved.
           </p>
           <p>
-            Contact:{" "}
             <a
               href={`mailto:${BUSINESS.email}`}
-              className="hover:text-slate-300"
+              className="transition-colors hover:text-[var(--text-strong)]"
             >
               {BUSINESS.email}
             </a>

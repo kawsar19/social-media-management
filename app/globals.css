@@ -1236,3 +1236,149 @@ body {
 :root[data-theme="light"] .legal-body strong {
   color: rgb(30 41 59);
 }
+
+/* ── Marketing surface ──────────────────────────────────────────────
+   The public pages carry more visual weight than the app UI: a visitor
+   decides here whether to sign up. These are the pieces that repeat. */
+
+/* Spotlight behind the hero — a soft conic wash that gives the headline
+   something to sit on instead of flat background. */
+.mk-spotlight {
+  position: absolute;
+  inset: -20% -10% auto -10%;
+  height: 42rem;
+  pointer-events: none;
+  background:
+    radial-gradient(38rem 22rem at 50% 0%, rgba(99, 102, 241, 0.22), transparent 65%),
+    radial-gradient(30rem 20rem at 20% 20%, rgba(236, 72, 153, 0.14), transparent 60%),
+    radial-gradient(32rem 20rem at 82% 10%, rgba(56, 189, 248, 0.14), transparent 60%);
+  filter: blur(8px);
+  z-index: 0;
+}
+:root[data-theme="light"] .mk-spotlight {
+  background:
+    radial-gradient(38rem 22rem at 50% 0%, rgba(99, 102, 241, 0.16), transparent 65%),
+    radial-gradient(30rem 20rem at 20% 20%, rgba(236, 72, 153, 0.1), transparent 60%),
+    radial-gradient(32rem 20rem at 82% 10%, rgba(56, 189, 248, 0.1), transparent 60%);
+}
+
+/* Feature card with a gradient hairline that lights up on hover. The
+   border is a masked gradient rather than a solid colour so the edge
+   catches light like the glass panels in the app do. */
+.mk-card {
+  position: relative;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+}
+.mk-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(140deg, rgba(129, 140, 248, 0.7), rgba(236, 72, 153, 0.35) 40%, transparent 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+}
+.mk-card:hover {
+  transform: translateY(-4px);
+  background: var(--glass-bg-hover);
+  box-shadow: 0 22px 50px -22px var(--glass-shadow);
+}
+.mk-card:hover::before {
+  opacity: 1;
+}
+
+/* Icon tile inside a feature card. */
+.mk-icon {
+  display: flex;
+  height: 2.75rem;
+  width: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.85rem;
+  background: linear-gradient(140deg, rgba(129, 140, 248, 0.22), rgba(236, 72, 153, 0.14));
+  border: 1px solid var(--glass-border);
+  color: var(--text-strong);
+}
+
+/* Platform pill in the "works with" row. */
+.mk-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-body);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: transform 0.25s ease, background 0.25s ease, border-color 0.25s ease;
+}
+.mk-pill:hover {
+  transform: translateY(-2px);
+  background: var(--glass-bg-hover);
+}
+
+/* Section eyebrow — small label above a section heading. */
+.mk-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Numbered step marker in "how it works". */
+.mk-step-num {
+  display: flex;
+  height: 2.5rem;
+  width: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(140deg, #6366f1, #a855f7 55%, #ec4899);
+  box-shadow: 0 10px 28px -12px rgba(129, 140, 248, 0.9);
+}
+
+/* Footer brand mark and the closing CTA panel share this gradient edge. */
+.mk-cta {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.5rem;
+  padding: 3rem 2rem;
+  text-align: center;
+  background:
+    radial-gradient(40rem 20rem at 50% -40%, rgba(129, 140, 248, 0.28), transparent 70%),
+    var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* Footer link with a quiet underline reveal. */
+.mk-flink {
+  color: var(--text-muted);
+  transition: color 0.2s ease;
+}
+.mk-flink:hover {
+  color: var(--text-strong);
+}
