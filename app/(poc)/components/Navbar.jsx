@@ -3,8 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FiZap, FiLogOut, FiUser } from "react-icons/fi";
+import { FiZap, FiLogOut } from "react-icons/fi";
 import ThemeToggle from "./ThemeToggle";
+import UserAvatar from "./UserAvatar";
 import { useAuth } from "./AuthProvider";
 
 // Slim top bar. All navigation now lives in the dashboard sidebar
@@ -42,7 +43,7 @@ export default function Navbar() {
                 href="/profile"
                 className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-slate-300 transition-colors hover:bg-white/[0.08] hover:text-white"
               >
-                <FiUser className="h-3.5 w-3.5" />
+                <UserAvatar user={user} size={20} />
                 <span className="hidden max-w-[120px] truncate sm:inline">{user.name}</span>
               </Link>
               <button

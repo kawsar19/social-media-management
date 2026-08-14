@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { FiUser, FiLink, FiEdit3, FiClock, FiCheckCircle, FiAlertTriangle } from "react-icons/fi";
+import { FiLink, FiEdit3, FiClock, FiCheckCircle, FiAlertTriangle } from "react-icons/fi";
+import UserAvatar from "../components/UserAvatar";
 import { useAuth } from "../components/AuthProvider";
 import { listPosts } from "../lib/posts";
 import { fetchAccounts } from "../lib/socialTokens";
@@ -49,9 +50,7 @@ export default function ProfilePage() {
   return (
     <div className="rise-in mx-auto max-w-4xl px-6 py-10">
       <header className="glass mb-8 flex items-center gap-5 rounded-2xl p-6">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-rose-500 text-2xl font-bold text-white">
-          {user?.name?.[0]?.toUpperCase() ?? <FiUser />}
-        </div>
+        <UserAvatar user={user} size={64} rounded="rounded-2xl" />
         <div className="min-w-0">
           <h1 className="truncate text-2xl font-bold text-white">
             {user?.name || "Your Profile"}

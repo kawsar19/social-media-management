@@ -40,7 +40,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       token,
-      user: { id: user._id, email: user.email, name: user.name },
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar,
+      },
     });
   } catch (error) {
     return NextResponse.json(
