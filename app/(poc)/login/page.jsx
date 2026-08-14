@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "../components/AuthProvider";
+import GoogleAuth from "../components/GoogleAuth";
+import { authErrorMessage } from "../lib/authErrors";
 import { FiMail, FiLock, FiArrowRight, FiAlertCircle } from "react-icons/fi";
 
 function LoginForm() {
@@ -24,7 +26,7 @@ function LoginForm() {
       await login(email, password);
       window.location.href = redirect;
     } catch (err) {
-      setError(err.message);
+      setError(authErrorMessage(err.message));
     } finally {
       setSubmitting(false);
     }
@@ -50,6 +52,19 @@ function LoginForm() {
             <span>{error}</span>
           </div>
         )}
+
+        <GoogleAuth
+          redirect={redirect}
+          onError={(code) => setError(authErrorMessage(code))}
+        />
+
+        <div className="flex items-center gap-3">
+          <span className="h-px flex-1 bg-white/10" />
+          <span className="text-[11px] uppercase tracking-wider text-slate-500">
+            or
+          </span>
+          <span className="h-px flex-1 bg-white/10" />
+        </div>
 
         <label className="block">
           <span className="mb-1.5 block text-xs font-medium text-slate-300">Email</span>

@@ -64,13 +64,34 @@ export function AuthProvider({ children }) {
     return data;
   }
 
+  // `credential` is the ID token Google Identity Services hands the browser.
+  // The server verifies it and returns the same { token, user } shape as the
+  // email/password routes, so the rest of the app is unaffected.
+  async function loginWithGoogle(credential) {
+    const res = await fetch("/api/auth/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "google_login_failed");
+    }
+    const next = { token: data.token, user: data.user };
+    setAuth(next);
+    writeStoredAuth(next);
+    return data;
+  }
+
   function logout() {
     setAuth(null);
     writeStoredAuth(null);
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, login, signup, logout }}>
+    <AuthContext.Provider
+      value={{ user, token, login, signup, loginWithGoogle, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );
