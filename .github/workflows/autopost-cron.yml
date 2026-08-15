@@ -30,10 +30,10 @@ concurrency:
 jobs:
   trigger:
     runs-on: ubuntu-latest
-    # APP_URL and CRON_SECRET are stored as Production *environment* secrets,
-    # which a job only receives if it declares that environment — without this
-    # line they resolve to empty and the step below fails the run.
-    environment: Production
+    # No `environment:` here on purpose. Environment secrets only reach a job
+    # that names that environment *exactly*, which makes the run depend on a
+    # string matching a setting in the UI. A scheduled ping isn't a deployment,
+    # so APP_URL and CRON_SECRET live as plain repository secrets instead.
     steps:
       - name: Call the cron endpoint
         env:
@@ -42,10 +42,22 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
-            echo "::error::APP_URL and CRON_SECRET repository secrets must both be set."
+          # Named individually: "one of two things is missing" sends you
+          # checking both, and the fix differs depending on which it is.
+          missing=""
+          [ -z "${APP_URL:-}" ] && missing="APP_URL"
+          [ -z "${CRON_SECRET:-}" ] && missing="${missing:+$missing and }CRON_SECRET"
+
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s): $missing. Add them under" \
+                 "Settings > Secrets and variables > Actions > Repository secrets" \
+                 "(NOT Environment secrets — this job declares no environment)."
             exit 1
           fi
+
+          # Length only — never the value. Confirms the secret arrived and has
+          # no stray whitespace, without printing it into a public log.
+          echo "APP_URL=${APP_URL} (CRON_SECRET length: ${#CRON_SECRET})"
 
           # --max-time guards against a hung request holding the runner for the
           # full job timeout. The endpoint's own ceiling is 299s.
