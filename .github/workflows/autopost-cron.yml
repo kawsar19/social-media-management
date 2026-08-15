@@ -1,0 +1,62 @@
+name: Autopilot cron
+
+# Pings /api/cron so due automations publish. The app does all the real work —
+# this only supplies a clock.
+#
+# Why not Vercel's own cron: the free plan allows one run per day at a time it
+# chooses, which can't honour a user-picked time of day. GitHub Actions has no
+# such limit and is free on this repo.
+#
+# GitHub's scheduler is best-effort and runs late under load, sometimes by 10+
+# minutes. That's fine here: /api/cron publishes anything whose time has passed
+# within a grace window, and its runKey guard means a late or repeated tick
+# can't double-post.
+
+on:
+  schedule:
+    # Every 15 minutes, so a 09:00 post goes out by ~09:15 at the latest.
+    - cron: "*/15 * * * *"
+  # Lets you fire a run by hand from the Actions tab, which is the quickest way
+  # to check the wiring after deploying.
+  workflow_dispatch:
+
+# Two overlapping ticks would each see the same due automations. The runKey
+# guard already prevents double-posting, but serialising avoids the wasted AI
+# calls and the confusing duplicate rows.
+concurrency:
+  group: autopost-cron
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the cron endpoint
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::APP_URL and CRON_SECRET repository secrets must both be set."
+            exit 1
+          fi
+
+          # --max-time guards against a hung request holding the runner for the
+          # full job timeout. The endpoint's own ceiling is 299s.
+          http_code=$(curl -sS -o response.json -w "%{http_code}" \
+            --max-time 310 \
+            -X POST "${APP_URL%/}/api/cron" \
+            -H "Authorization: Bearer ${CRON_SECRET}")
+
+          echo "HTTP $http_code"
+          # The body reports which automations ran and how each publish went; it
+          # is the only record of an unattended post, so it goes in the log.
+          cat response.json || true
+          echo
+
+          if [ "$http_code" != "200" ]; then
+            echo "::error::Cron endpoint returned HTTP $http_code"
+            exit 1
+          fi

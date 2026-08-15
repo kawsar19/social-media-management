@@ -1382,3 +1382,105 @@ body {
 .mk-flink:hover {
   color: var(--text-strong);
 }
+
+/* ============================================================
+   Autopilot.
+
+   Surfaces inside dialogs, built on the theme tokens rather than
+   white-alpha utilities. The bracket forms (bg-white/[0.02] and
+   friends) have no light-theme remap above, so they stay near-black
+   under light theme and swallow the remapped dark text — these give
+   the same look in dark and stay readable in light.
+   ============================================================ */
+
+/* A filled row/panel one step above its container: option rows, the
+   Pages list, the preview's post body. */
+.surface-row {
+  background: var(--fill-subtle);
+  border: 1px solid var(--line);
+  transition: background-color 150ms ease-out, border-color 150ms ease-out;
+}
+label.surface-row:hover:not(.cursor-not-allowed) {
+  background: var(--glass-bg-hover);
+  border-color: var(--line-strong);
+}
+
+/* Inline status message. `note` alone is neutral; add a variant for tone. */
+.note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-body);
+  background: var(--fill-subtle);
+  border: 1px solid var(--line);
+}
+.note-danger {
+  color: #e5484d;
+  background: rgba(255, 59, 48, 0.1);
+  border-color: rgba(255, 59, 48, 0.28);
+}
+:root[data-theme="light"] .note-danger {
+  color: #b42318;
+  background: rgba(255, 59, 48, 0.08);
+}
+.note-warn {
+  color: #d97706;
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+:root[data-theme="dark"] .note-warn {
+  color: #fbbf24;
+}
+
+/* Day-of-week toggles in the weekly schedule picker. */
+.day-chip {
+  padding: 0.4rem 0.25rem;
+  border-radius: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--fill-subtle);
+  border: 1px solid transparent;
+  transition: background-color 150ms ease-out, color 150ms ease-out,
+    border-color 150ms ease-out;
+}
+.day-chip:hover:not(.is-active) {
+  background: var(--glass-bg-hover);
+  color: var(--text-body);
+}
+.day-chip.is-active {
+  color: #fff;
+  background: linear-gradient(135deg, #f59e0b, #f43f5e);
+  border-color: transparent;
+}
+
+/* Autopilot's primary action. The gradient is the feature's accent and
+   carries white text in both themes, so it isn't token-driven — but the
+   shadow is toned down in light, where a heavy glow reads as smudge. */
+.btn-autopilot {
+  background: linear-gradient(135deg, #f59e0b, #f43f5e);
+  color: #fff;
+  box-shadow: 0 8px 24px -10px rgba(244, 63, 94, 0.55);
+}
+.btn-autopilot:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+:root[data-theme="light"] .btn-autopilot {
+  box-shadow: 0 6px 18px -8px rgba(244, 63, 94, 0.45);
+}
+
+/* Ghost icon button that turns red on hover — the delete action. Kept a
+   modifier of .btn-ghost so it inherits the resting style and only overrides
+   the hover, rather than restating the whole button. */
+.btn-ghost-danger:hover:not(:disabled) {
+  color: #e5484d;
+  background: rgba(255, 59, 48, 0.12);
+  border-color: rgba(255, 59, 48, 0.28);
+}
+:root[data-theme="light"] .btn-ghost-danger:hover:not(:disabled) {
+  color: #b42318;
+}
