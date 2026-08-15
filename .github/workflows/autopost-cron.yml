@@ -30,6 +30,10 @@ concurrency:
 jobs:
   trigger:
     runs-on: ubuntu-latest
+    # APP_URL and CRON_SECRET are stored as Production *environment* secrets,
+    # which a job only receives if it declares that environment — without this
+    # line they resolve to empty and the step below fails the run.
+    environment: Production
     steps:
       - name: Call the cron endpoint
         env:
