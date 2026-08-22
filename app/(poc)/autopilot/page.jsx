@@ -796,7 +796,7 @@ function FormModal({
 
             <p className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-500">
               <FiCalendar className="h-3 w-3" />
-              {form.timezone} · runs within ~15 minutes of this time
+              {form.timezone} · usually goes out within an hour of this time
             </p>
           </Field>
 

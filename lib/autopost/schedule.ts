@@ -17,7 +17,12 @@
 // and is retried on the next tick — should still publish the morning post.
 // Beyond this the occurrence is treated as missed rather than posted hours off
 // schedule, which for a "9am post" landing at 3pm is the kinder failure.
-export const GRACE_MINUTES = 120;
+//
+// Sized against how erratically the scheduler actually fires, not how often it
+// is asked to: observed gaps between GitHub-scheduled runs reach an hour, so a
+// window only slightly wider than one gap would drop a post whenever two ticks
+// were skipped in a row.
+export const GRACE_MINUTES = 180;
 
 // The automation's local wall-clock, as plain numbers.
 //

@@ -73,6 +73,12 @@ async function publishFileTarget(ctx: Ctx, target: any, token: string) {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: fd,
+    // A share route that never answers would otherwise hold this request until
+    // the platform kills the whole function — taking the SSE stream with it, so
+    // the UI sees the connection drop rather than a failed target. Capped just
+    // above the slowest share route's own budget (YouTube's 240s) so a route
+    // that is merely slow still gets to report its own error.
+    signal: AbortSignal.timeout(260_000),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false, error: data.error || "publish_failed" };

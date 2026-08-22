@@ -14,7 +14,12 @@ name: Autopilot cron
 
 on:
   schedule:
-    # Every 15 minutes, so a 09:00 post goes out by ~09:15 at the latest.
+    # Asks for every 15 minutes. GitHub schedules this best-effort and drops
+    # ticks under load — observed spacing on this repo is more like 25-60
+    # minutes, so a 09:00 post typically lands somewhere in 09:00-09:45.
+    # Requesting more often (*/5) doesn't help: the gap is GitHub skipping
+    # ticks, not the interval being too wide. The endpoint's grace window
+    # (GRACE_MINUTES in lib/autopost/schedule.ts) is what absorbs the drift.
     - cron: "*/15 * * * *"
   # Lets you fire a run by hand from the Actions tab, which is the quickest way
   # to check the wiring after deploying.
