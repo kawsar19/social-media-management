@@ -22,7 +22,11 @@ export const postInputSchema = z.object({
   youtubeTitle: z.string().optional(),
   youtubePrivacy: z.enum(["private", "unlisted", "public"]).optional(),
   status: z.enum(["draft", "scheduled"]).optional(), // create/update only set these
-  scheduledAt: z.coerce.date().optional(),
+  // `null` clears the schedule (used when a queued post is pulled back to a
+  // draft). It has to be spelled out: z.coerce.date() alone turns null into the
+  // epoch, which would leave the post looking permanently overdue rather than
+  // unscheduled.
+  scheduledAt: z.union([z.coerce.date(), z.null()]).optional(),
   targets: z.array(targetInputSchema).default([]),
 });
 

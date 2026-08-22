@@ -59,7 +59,10 @@ export async function PATCH(request: NextRequest, { params }: { params: any }) {
     if (data.youtubeTitle !== undefined) post.youtubeTitle = data.youtubeTitle;
     if (data.youtubePrivacy !== undefined) post.youtubePrivacy = data.youtubePrivacy;
     if (data.status !== undefined) post.status = data.status;
-    if (data.scheduledAt !== undefined) post.scheduledAt = data.scheduledAt;
+    // null means "clear it" — a queued post being pulled back to a draft.
+    if (data.scheduledAt !== undefined) {
+      post.scheduledAt = data.scheduledAt ?? undefined;
+    }
     if (data.targets !== undefined) {
       post.targets = data.targets.map((t) => ({ ...t, status: "pending" as const }));
     }

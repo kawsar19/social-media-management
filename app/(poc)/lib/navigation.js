@@ -26,6 +26,7 @@ import {
   FiUser,
   FiGrid,
   FiZap,
+  FiCalendar,
 } from "react-icons/fi";
 import { FaYoutube, FaFacebook } from "react-icons/fa6";
 
@@ -50,6 +51,7 @@ export const NAV_SECTIONS = [
       // reachable directly by URL; remove `disabled` to list them again.
       { href: "/post", label: "Compose", Icon: FiEdit3, desc: "Write a post for every platform at once.", disabled: true },
       { href: "/publish", label: "Publish All", Icon: FiSend, desc: "Push your draft out to all destinations.", disabled: false },
+      { href: "/queue", label: "Queue", Icon: FiCalendar, desc: "Line up posts now, publish them on a date and time." },
       { href: "/autopilot", label: "Autopilot", Icon: FiZap, desc: "AI writes and publishes for you, on a schedule." },
       { href: "/profile/posts", label: "Saved Posts", Icon: FiArchive, desc: "Drafts and posts you saved for later.", disabled: true },
     ],

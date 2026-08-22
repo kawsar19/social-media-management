@@ -5,15 +5,22 @@ import AutoPost from "@/lib/models/AutoPost";
 import Post from "@/lib/models/Post";
 import { writePost } from "@/lib/ai/writePost";
 import { isDue } from "@/lib/autopost/schedule";
+import { runQueue } from "@/lib/autopost/queue";
 
 // GET/POST /api/cron
 // Auth: `Authorization: Bearer <CRON_SECRET>` (or ?key= for callers that can't
 // set headers). No user session — this is called by a scheduler, not a browser.
 //
-// Walks every enabled AutoPost, publishes the ones whose scheduled moment has
-// arrived, and records the outcome. Safe to call as often as you like: an
-// occurrence that has already run is skipped by its runKey, so extra ticks are
-// no-ops rather than duplicate posts.
+// Two jobs run on every tick:
+//
+//   1. Autopilot — walks every enabled AutoPost, generates fresh content for the
+//      ones whose scheduled moment has arrived, and publishes it.
+//   2. Queue — publishes already-written Posts that were scheduled for a
+//      specific date and time (status "scheduled", see lib/autopost/queue.ts).
+//
+// Safe to call as often as you like. An autopilot occurrence that has already
+// run is skipped by its runKey, and a queued post is claimed by an atomic
+// status change, so extra ticks are no-ops rather than duplicate posts.
 //
 // Driven by .github/workflows/autopost-cron.yml (every 15 minutes) — Vercel's
 // own cron is limited to once a day on the free plan, which can't honour a
@@ -31,6 +38,12 @@ export const maxDuration = 299;
 // Anything not reached stays due and is picked up 15 minutes later, well inside
 // the grace window.
 const MAX_PER_RUN = 8;
+
+// Ceiling on queued posts published per tick, budgeted separately from the
+// automations above so a long autopilot backlog can't starve the queue (or the
+// other way round). Queued posts are cheaper — no AI call, just the publish —
+// but a video target can still consume most of a run, hence the modest number.
+const MAX_QUEUE_PER_RUN = 10;
 
 // How many past runs to keep per automation. This is the history strip in the
 // UI, not an audit log.
@@ -221,14 +234,23 @@ async function handle(request: NextRequest) {
     results.push(await runOne(auto, runKey, origin));
   }
 
+  // Queued posts run after the automations. They're the cheaper job, so if this
+  // tick is going to run out of time it should be the automations — which cost
+  // an AI call each — that got the budget. Anything left stays scheduled and is
+  // picked up next tick, well inside the grace window.
+  const queue = await runQueue(now, origin, mintUserToken, MAX_QUEUE_PER_RUN);
+
   return NextResponse.json({
-    checked: candidates.length,
-    due: due.length,
-    // Surfaced rather than silently dropped: if this is ever non-zero the tick
-    // hit its ceiling and the rest are waiting on the next one.
-    deferred: Math.max(0, due.length - slice.length),
-    ran: results.length,
-    results,
+    autopilot: {
+      checked: candidates.length,
+      due: due.length,
+      // Surfaced rather than silently dropped: if this is ever non-zero the tick
+      // hit its ceiling and the rest are waiting on the next one.
+      deferred: Math.max(0, due.length - slice.length),
+      ran: results.length,
+      results,
+    },
+    queue,
   });
 }
 

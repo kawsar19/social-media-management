@@ -1,7 +1,9 @@
 name: Autopilot cron
 
-# Pings /api/cron so due automations publish. The app does all the real work —
-# this only supplies a clock.
+# Pings /api/cron so due posts publish. The app does all the real work — this
+# only supplies a clock. Two things depend on it: Autopilot automations (AI
+# writes a fresh post each run) and the Queue (posts written ahead of time and
+# scheduled for a specific date and time).
 #
 # Why not Vercel's own cron: the free plan allows one run per day at a time it
 # chooses, which can't honour a user-picked time of day. GitHub Actions has no
@@ -9,8 +11,9 @@ name: Autopilot cron
 #
 # GitHub's scheduler is best-effort and runs late under load, sometimes by 10+
 # minutes. That's fine here: /api/cron publishes anything whose time has passed
-# within a grace window, and its runKey guard means a late or repeated tick
-# can't double-post.
+# within a grace window, and a late or repeated tick can't double-post — an
+# automation is guarded by its runKey, a queued post by an atomic claim on its
+# status.
 
 on:
   schedule:
@@ -72,8 +75,9 @@ jobs:
             -H "Authorization: Bearer ${CRON_SECRET}")
 
           echo "HTTP $http_code"
-          # The body reports which automations ran and how each publish went; it
-          # is the only record of an unattended post, so it goes in the log.
+          # The body reports what ran under both `autopilot` and `queue`, and how
+          # each publish went; it is the only record of an unattended post, so it
+          # goes in the log.
           cat response.json || true
           echo
 
